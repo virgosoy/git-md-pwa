@@ -1,0 +1,14 @@
+{
+  "sha": "7fd1a60b01f91b314f59955a4e4d4e80d8edf11d",
+  "url": "https://api.github.com/repos/octocat/Hello-World/git/trees/7fd1a60b01f91b314f59955a4e4d4e80d8edf11d",
+  "tree": [
+    { "path": "README", "mode": "100644", "type": "blob", "sha": "980a0d5f19a64b4b30a87d4206aade58726b60e3", "size": 13, "url": "https://api.github.com/repos/octocat/Hello-World/git/blobs/980a0d5f19a64b4b30a87d4206aade58726b60e3" },
+    { "path": ".github", "mode": "040000", "type": "tree", "sha": "a111111111111111111111111111111111111111", "url": "https://api.github.com/repos/octocat/Hello-World/git/trees/a111111111111111111111111111111111111111" },
+    { "path": ".github/workflows/ci.yml", "mode": "100644", "type": "blob", "sha": "b222222222222222222222222222222222222222", "size": 2048, "url": "https://api.github.com/repos/octocat/Hello-World/git/blobs/b222222222222222222222222222222222222222" },
+    { "path": "docs/notes.md", "mode": "100644", "type": "blob", "sha": "c333333333333333333333333333333333333333", "size": 4096, "url": "https://api.github.com/repos/octocat/Hello-World/git/blobs/c333333333333333333333333333333333333333" },
+    { "path": "docs/medium.md", "mode": "100644", "type": "blob", "sha": "e555555555555555555555555555555555555555", "size": 750000, "url": "https://api.github.com/repos/octocat/Hello-World/git/blobs/e555555555555555555555555555555555555555" },
+    { "path": "docs/big-dump.md", "mode": "100644", "type": "blob", "sha": "d444444444444444444444444444444444444444", "size": 15000000, "url": "https://api.github.com/repos/octocat/Hello-World/git/blobs/d444444444444444444444444444444444444444" },
+    { "path": "assets/logo.png", "mode": "100644", "type": "blob", "sha": "f666666666666666666666666666666666666666", "size": 32582, "url": "https://api.github.com/repos/octocat/Hello-World/git/blobs/f666666666666666666666666666666666666666" }
+  ],
+  "truncated": false
+}
