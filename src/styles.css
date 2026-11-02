@@ -56,3 +56,111 @@ body {
 .app__hint {
   color: var(--muted);
 }
+
+/* 头部与按钮 */
+.app__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--surface);
+  background: var(--surface);
+  color: var(--fg);
+  border-radius: 0.5rem;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* 设置表单 */
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.settings__title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.field--row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.field__label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.field__hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.field__input {
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.95rem;
+  width: 100%;
+}
+
+.field__input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.field__repo {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.field__slash {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.settings__actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.settings__saved {
+  margin: 0;
+  color: var(--accent);
+  font-size: 0.85rem;
+}
+
+.welcome {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
