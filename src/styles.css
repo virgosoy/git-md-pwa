@@ -164,3 +164,67 @@ body {
   flex-direction: column;
   gap: 0.5rem;
 }
+
+/* 阅读器 */
+.app__main--flush {
+  padding: 0;
+}
+
+.reader {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.app__title--trunc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 最近打开 */
+.recent__title {
+  margin: 0 0 0.6rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.recent__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.recent__item {
+  appearance: none;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  color: var(--fg);
+  font-size: 0.95rem;
+  padding: 0.55rem 0.7rem;
+  cursor: pointer;
+}
+
+.recent__item:hover {
+  background: var(--surface);
+}
+
+.notice {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0 auto;
+  max-width: 42rem;
+  padding: 0.8rem 1rem calc(0.8rem + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid #3f3f46;
+  color: var(--fg);
+  font-size: 0.9rem;
+}
