@@ -3,6 +3,8 @@ import preact from '@preact/preset-vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  // GitHub Pages 项目页子路径（https://<user>.github.io/git-md-pwa/）
+  base: '/git-md-pwa/',
   plugins: [
     preact(),
     VitePWA({
@@ -13,7 +15,7 @@ export default defineConfig({
         short_name: 'MD镜像',
         description: '把 GitHub 私有 Markdown 仓库镜像到手机离线阅读',
         display: 'standalone',
-        start_url: '/',
+        start_url: '/git-md-pwa/',
         theme_color: '#18181b',
         background_color: '#18181b',
         icons: [
