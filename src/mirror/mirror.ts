@@ -23,13 +23,21 @@ export interface MirrorResult {
 export const TRUNCATED_ERROR =
   '仓库文件树已超出 GitHub 单次接口上限，为避免镜像不完整已中止同步'
 
+/** 截断树是同步层可分类的专用错误（避免用字符串相等判定错误类型）。 */
+export class TruncatedError extends Error {
+  constructor() {
+    super(TRUNCATED_ERROR)
+    this.name = 'TruncatedError'
+  }
+}
+
 export async function mirrorRepo(
   client: GithubClient,
   repo: Repository
 ): Promise<MirrorResult> {
   const tree = await client.getTree(repo)
   if (tree.truncated) {
-    throw new Error(TRUNCATED_ERROR)
+    throw new TruncatedError()
   }
 
   // 版本号门：整树未变则直接视为已最新，跳过 diff 与全部网络拉取。

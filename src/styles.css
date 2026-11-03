@@ -181,6 +181,19 @@ body {
   white-space: nowrap;
 }
 
+.app__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.sync-banner {
+  padding: 0.4rem 1rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+  background: var(--surface);
+  border-bottom: 1px solid #3f3f46;
+}
+
 /* 最近打开 */
 .recent__title {
   margin: 0 0 0.6rem;

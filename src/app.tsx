@@ -6,6 +6,11 @@ import { getFile } from './mirror/store'
 import { loadReading, listRecent, recordOpen, saveScroll } from './reader/reading'
 import type { ReadingRecord } from './reader/reading'
 import { ReaderView } from './reader/ReaderView'
+import { createGithubClient } from './github/client'
+import { loadMirrorMeta } from './mirror/store'
+import { runSync } from './sync/sync'
+import type { SyncFailKind } from './sync/sync'
+import { SyncBanner } from './sync/SyncBanner'
 
 interface OpenNote {
   path: string
@@ -24,12 +29,56 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null)
   const scrollTimer = useRef<number | undefined>(undefined)
 
+  // 同步状态（票 04）
+  const settingsRef = useRef<AppSettings | null>(null)
+  settingsRef.current = settings
+  const [syncStatus, setSyncStatus] = useState<'syncing' | 'synced' | 'failed'>('synced')
+  const [syncFail, setSyncFail] = useState<{ kind: SyncFailKind; message: string } | null>(
+    null
+  )
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null)
+
   useEffect(() => {
     loadSettings().then((s) => {
       setSettings(s)
-      if (isConfigured(s)) void refreshRecent()
+      settingsRef.current = s
+      if (isConfigured(s)) {
+        void refreshRecent()
+        void loadMirrorMeta()
+          .then((m) => {
+            if (m) setLastSyncedAt(m.syncedAt)
+          })
+          .catch(() => {})
+        if (s.autoSync) void doSync(false)
+      }
     })
   }, [])
+
+  async function doSync(force: boolean): Promise<void> {
+    const s = settingsRef.current
+    if (!s || !isConfigured(s)) return
+    // 开关守门：非强制且 autoSync 关闭则完全不请求网络
+    if (!force && !s.autoSync) return
+    setSyncStatus('syncing')
+    const outcome = await runSync(createGithubClient(s.token), {
+      owner: s.owner,
+      repo: s.repo
+    })
+    if (outcome.status === 'synced') {
+      setSyncFail(null)
+      setLastSyncedAt(Date.now())
+      setSyncStatus('synced')
+      try {
+        await refreshRecent()
+      } catch {
+        // 列表刷新失败不影响同步结果
+      }
+    } else {
+      setSyncFail({ kind: outcome.kind, message: outcome.message })
+      setSyncStatus('failed')
+      // 失败沿用旧镜像（02 已保证不破坏），保留上次同步时间
+    }
+  }
 
   async function refreshRecent(): Promise<void> {
     setRecent(await listRecent(20))
@@ -71,12 +120,19 @@ export function App() {
         ) : (
           <>
             <h1 class="app__title">MD 镜像</h1>
-            <button class="btn" onClick={() => setShowSettings((s) => !s)}>
-              {showSettings ? '收起' : '设置'}
-            </button>
+            <div class="app__actions">
+              <button class="btn" onClick={() => void doSync(true)}>
+                刷新
+              </button>
+              <button class="btn" onClick={() => setShowSettings((s) => !s)}>
+                {showSettings ? '收起' : '设置'}
+              </button>
+            </div>
           </>
         )}
       </header>
+
+      <SyncBanner status={syncStatus} fail={syncFail} lastSyncedAt={lastSyncedAt} />
 
       <main class={current ? 'app__main app__main--flush' : 'app__main'}>
         {current ? (
