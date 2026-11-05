@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { SettingsView } from './settings/SettingsView'
 import type { AppSettings } from './settings/store'
 import { isConfigured, loadSettings } from './settings/store'
-import { getFile } from './mirror/store'
+import { getFile, loadFiles } from './mirror/store'
 import { loadReading, listRecent, recordOpen, saveScroll } from './reader/reading'
 import type { ReadingRecord } from './reader/reading'
 import { ReaderView } from './reader/ReaderView'
@@ -37,25 +37,37 @@ export function App() {
     null
   )
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null)
+  const [mirrorCount, setMirrorCount] = useState<number | null>(null)
 
   useEffect(() => {
-    loadSettings().then((s) => {
-      setSettings(s)
-      settingsRef.current = s
-      if (isConfigured(s)) {
-        void refreshRecent()
-        void loadMirrorMeta()
-          .then((m) => {
-            if (m) setLastSyncedAt(m.syncedAt)
-          })
-          .catch(() => {})
-        if (s.autoSync) void doSync(false)
-      }
-    })
+    loadSettings()
+      .then((s) => {
+        setSettings(s)
+        settingsRef.current = s
+        if (isConfigured(s)) {
+          void refreshRecent()
+          void loadMirrorMeta()
+            .then((m) => {
+              if (m) setLastSyncedAt(m.syncedAt)
+            })
+            .catch(() => {})
+          void refreshMirrorCount()
+          void runSyncTask(s, false)
+        }
+      })
+      .catch(() => {})
   }, [])
 
-  async function doSync(force: boolean): Promise<void> {
-    const s = settingsRef.current
+  async function refreshMirrorCount(): Promise<void> {
+    try {
+      setMirrorCount((await loadFiles()).length)
+    } catch {
+      // 忽略计数失败
+    }
+  }
+
+  /** 执行一次同步（force 会无视同步开关） */
+  async function runSyncTask(s: AppSettings | null, force: boolean): Promise<void> {
     if (!s || !isConfigured(s)) return
     // 开关守门：非强制且 autoSync 关闭则完全不请求网络
     if (!force && !s.autoSync) return
@@ -70,6 +82,7 @@ export function App() {
       setSyncStatus('synced')
       try {
         await refreshRecent()
+        await refreshMirrorCount()
       } catch {
         // 列表刷新失败不影响同步结果
       }
@@ -77,6 +90,21 @@ export function App() {
       setSyncFail({ kind: outcome.kind, message: outcome.message })
       setSyncStatus('failed')
       // 失败沿用旧镜像（02 已保证不破坏），保留上次同步时间
+    }
+  }
+
+  async function doSync(force: boolean): Promise<void> {
+    await runSyncTask(settingsRef.current, force)
+  }
+
+  async function handleSettingsSaved(): Promise<void> {
+    const s = await loadSettings()
+    setSettings(s)
+    settingsRef.current = s
+    if (isConfigured(s)) {
+      void refreshMirrorCount()
+      // 首次配置保存后立即同步，让首页立刻有内容
+      void runSyncTask(s, false)
     }
   }
 
@@ -149,14 +177,24 @@ export function App() {
         ) : showSettings || !configured ? (
           <SettingsView
             onClose={() => setShowSettings(false)}
-            onSaved={() => loadSettings().then(setSettings)}
+            onSaved={() => void handleSettingsSaved()}
           />
         ) : recent.length === 0 ? (
           <div class="welcome">
-            <p class="app__hint">还没有打开过笔记。</p>
-            <p class="app__hint">
-              镜像来自本地 IndexedDB；「同步」能力在票 04，真机联调时启用。
-            </p>
+            {mirrorCount != null && mirrorCount > 0 ? (
+              <>
+                <p class="app__hint">
+                  已镜像 <strong>{mirrorCount}</strong> 篇笔记 ✓
+                </p>
+                <p class="app__hint">
+                  点开一篇开始阅读，它就会出现在「最近打开」。右上「刷新」即时更新。
+                </p>
+              </>
+            ) : (
+              <p class="app__hint">
+                还没有笔记。右上「刷新」同步你的私有仓库（需在设置里填好令牌）。
+              </p>
+            )}
           </div>
         ) : (
           <nav class="recent">
