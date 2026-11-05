@@ -3,6 +3,8 @@ import { SettingsView } from './settings/SettingsView'
 import type { AppSettings } from './settings/store'
 import { isConfigured, loadSettings } from './settings/store'
 import { getFile, loadFiles } from './mirror/store'
+import type { StoredFile } from './mirror/store'
+import { NotesList } from './notes/NotesList'
 import { loadReading, listRecent, recordOpen, saveScroll } from './reader/reading'
 import type { ReadingRecord } from './reader/reading'
 import { ReaderView } from './reader/ReaderView'
@@ -37,7 +39,7 @@ export function App() {
     null
   )
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null)
-  const [mirrorCount, setMirrorCount] = useState<number | null>(null)
+  const [files, setFiles] = useState<StoredFile[]>([])
 
   useEffect(() => {
     loadSettings()
@@ -51,18 +53,18 @@ export function App() {
               if (m) setLastSyncedAt(m.syncedAt)
             })
             .catch(() => {})
-          void refreshMirrorCount()
+          void refreshFiles()
           void runSyncTask(s, false)
         }
       })
       .catch(() => {})
   }, [])
 
-  async function refreshMirrorCount(): Promise<void> {
+  async function refreshFiles(): Promise<void> {
     try {
-      setMirrorCount((await loadFiles()).length)
+      setFiles(await loadFiles())
     } catch {
-      // 忽略计数失败
+      // 忽略列表加载失败
     }
   }
 
@@ -82,7 +84,7 @@ export function App() {
       setSyncStatus('synced')
       try {
         await refreshRecent()
-        await refreshMirrorCount()
+        await refreshFiles()
       } catch {
         // 列表刷新失败不影响同步结果
       }
@@ -102,7 +104,7 @@ export function App() {
     setSettings(s)
     settingsRef.current = s
     if (isConfigured(s)) {
-      void refreshMirrorCount()
+      void refreshFiles()
       // 首次配置保存后立即同步，让首页立刻有内容
       void runSyncTask(s, false)
     }
@@ -179,36 +181,35 @@ export function App() {
             onClose={() => setShowSettings(false)}
             onSaved={() => void handleSettingsSaved()}
           />
-        ) : recent.length === 0 ? (
+        ) : recent.length === 0 && files.length === 0 ? (
           <div class="welcome">
-            {mirrorCount != null && mirrorCount > 0 ? (
-              <>
-                <p class="app__hint">
-                  已镜像 <strong>{mirrorCount}</strong> 篇笔记 ✓
-                </p>
-                <p class="app__hint">
-                  点开一篇开始阅读，它就会出现在「最近打开」。右上「刷新」即时更新。
-                </p>
-              </>
-            ) : (
-              <p class="app__hint">
-                还没有笔记。右上「刷新」同步你的私有仓库（需在设置里填好令牌）。
-              </p>
-            )}
+            <p class="app__hint">
+              还没有笔记。右上「刷新」同步你的私有仓库（需在设置里填好令牌）。
+            </p>
           </div>
         ) : (
-          <nav class="recent">
-            <h2 class="recent__title">最近打开</h2>
-            <ul class="recent__list">
-              {recent.map((r) => (
-                <li key={r.path}>
-                  <button class="recent__item" onClick={() => void openNote(r.path)}>
-                    {r.path}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </nav>
+          <div class="home">
+            {recent.length > 0 && (
+              <nav class="recent">
+                <h2 class="recent__title">最近打开</h2>
+                <ul class="recent__list">
+                  {recent.map((r) => (
+                    <li key={r.path}>
+                      <button class="recent__item" onClick={() => void openNote(r.path)}>
+                        {r.path}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+            )}
+            {files.length > 0 && (
+              <>
+                <h2 class="recent__title">全部笔记（{files.length}）</h2>
+                <NotesList files={files} onOpen={(p) => void openNote(p)} />
+              </>
+            )}
+          </div>
         )}
       </main>
 
