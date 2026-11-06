@@ -44,5 +44,6 @@ export async function clearSettings(): Promise<void> {
 }
 
 export function isConfigured(s: AppSettings): boolean {
-  return s.token.length > 0 && s.owner.length > 0 && s.repo.length > 0
+  // owner+repo 非空即视为已配置：公开仓库可不填令牌，匿名只读
+  return s.owner.length > 0 && s.repo.length > 0
 }

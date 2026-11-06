@@ -55,12 +55,12 @@ export function createGithubClient(
   async function request(url: string, accept: string): Promise<Response> {
     let res: Response
     try {
+      const headers: Record<string, string> = { Accept: accept }
+      // 空令牌（公开仓库）不加认证头，走匿名只读
+      if (token.length > 0) headers.Authorization = `Bearer ${token}`
       res = await fetchFn(url, {
-        headers: {
-          Accept: accept,
-          Authorization: `Bearer ${token}`
-          // 注意：绝不加 X-GitHub-Api-Version
-        }
+        headers
+        // 注意：绝不加 X-GitHub-Api-Version
       })
     } catch (err) {
       throw new GithubError(

@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { loadSettings, saveSettings, clearSettings, DEFAULT_SETTINGS } from './store'
+import {
+  loadSettings,
+  saveSettings,
+  clearSettings,
+  DEFAULT_SETTINGS,
+  isConfigured
+} from './store'
 
 // S1 · 设置存储：公共接口 loadSettings / saveSettings / clearSettings
 // 测试数据一律用哑值（隐私红线：不出现任何真实仓库/令牌信息）
@@ -48,5 +54,12 @@ describe('settingsStore', () => {
       repo: 'c',
       autoSync: false
     })
+  })
+
+  it('isConfigured：owner+repo 非空即视为已配置（公开库可不填令牌）', () => {
+    expect(isConfigured({ token: '', owner: 'me', repo: 'fixtures', autoSync: true })).toBe(true)
+    expect(isConfigured({ token: 'x', owner: '', repo: 'fixtures', autoSync: true })).toBe(false)
+    expect(isConfigured({ token: 'x', owner: 'me', repo: '', autoSync: true })).toBe(false)
+    expect(isConfigured(DEFAULT_SETTINGS)).toBe(false)
   })
 })

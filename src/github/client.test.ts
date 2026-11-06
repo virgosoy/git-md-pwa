@@ -60,6 +60,18 @@ describe('GithubClient', () => {
     })
   })
 
+  it('空令牌不发送 Authorization（公开仓库匿名读）', async () => {
+    const [fetch, log] = makeFakeFetch({ tree: [] })
+    const client = createGithubClient('', fetch)
+    await client.getTree({ owner: 'me', repo: 'fixtures' })
+
+    const headers = log.inits[0].headers as Record<string, string>
+    expect(headers.Authorization).toBeUndefined()
+    expect(log.urls[0]).toBe(
+      'https://api.github.com/repos/me/fixtures/git/trees/HEAD?recursive=1'
+    )
+  })
+
   it('网络失败抛 status 为 network 的 GithubError', async () => {
     const networkFetch = (async () => {
       throw new TypeError('Failed to fetch')

@@ -55,7 +55,7 @@ export function SettingsView({ onClose, onSaved }: SettingsViewProps) {
           disabled={!loaded}
           onInput={bindText('token')}
         />
-        <span class="field__hint">只存在本机；给单个私有仓库开只读权限即可。</span>
+        <span class="field__hint">只存在本机；私有仓库必须填，公开仓库可不填。</span>
       </label>
 
       <label class="field">
