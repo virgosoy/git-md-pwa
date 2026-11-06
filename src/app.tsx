@@ -7,6 +7,10 @@ import type { StoredFile } from './mirror/store'
 import { NotesList } from './notes/NotesList'
 import { buildIndex, searchHeadings } from './search'
 import { SearchResults } from './search/SearchResults'
+import { ensureAsset } from './assets/pipeline'
+import type { AssetLoader } from './assets/wire'
+import { assetRefsFromHtml } from './assets/extract'
+import { renderNote } from './reader/render'
 import { loadReading, listRecent, recordOpen, saveScroll } from './reader/reading'
 import type { ReadingRecord } from './reader/reading'
 import { ReaderView } from './reader/ReaderView'
@@ -47,6 +51,24 @@ export function App() {
   // 标题索引：内容变化才重算（591 篇×正文解析，不同步不重复跑）
   const index = useMemo(() => buildIndex(files), [files])
   const hits = useMemo(() => searchHeadings(index, query), [index, query])
+  const [readerTick, setReaderTick] = useState(0)
+
+  // 资源加载器：图/PDF 按需拉取（先查缓存再网络，缓存为 dataURL）
+  const assetLoader = useMemo<AssetLoader | null>(() => {
+    const s = settings
+    if (!s || !isConfigured(s)) return null
+    const client = createGithubClient(s.token)
+    const repo = { owner: s.owner, repo: s.repo }
+    return { load: (p) => ensureAsset(client, repo, p) }
+  }, [settings])
+
+  async function downloadNoteAssets(): Promise<void> {
+    if (!current || !assetLoader) return
+    const refs = assetRefsFromHtml(renderNote(current.content), current.path)
+    // 单条失败不影响其它资源；整体用 catch 兜住 unhandled rejection
+    await Promise.all(refs.map((r) => assetLoader!.load(r.path).catch(() => null)))
+    setReaderTick((t) => t + 1)
+  }
 
   useEffect(() => {
     loadSettings()
@@ -153,6 +175,9 @@ export function App() {
               ‹ 返回
             </button>
             <h1 class="app__title app__title--trunc">{current.path}</h1>
+            <button class="btn" onClick={() => void downloadNoteAssets()}>
+              全下
+            </button>
           </>
         ) : (
           <>
@@ -178,6 +203,8 @@ export function App() {
             path={current.path}
             content={current.content}
             initialScrollTop={current.scrollTop}
+            assetLoader={assetLoader}
+            refreshToken={readerTick}
             onOpenNote={(p) => void openNote(p)}
             onScroll={handleScroll}
           />

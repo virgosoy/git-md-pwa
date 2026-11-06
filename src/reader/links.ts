@@ -7,7 +7,7 @@
 
 export type LinkKind = 'external' | 'note' | 'anchor' | 'asset'
 
-const SCHEME_RE = /^(https?:|mailto:|tel:|ftp:)/i
+const SCHEME_RE = /^(https?:|mailto:|tel:|ftp:|data:|blob:)/i
 const MD_RE = /\.(md|markdown)$/i
 
 /** 去掉锚点与查询串，只剩纯路径部分。 */

@@ -8,14 +8,16 @@ export const STORE_SETTINGS = 'settings'
 export const STORE_MIRROR = 'mirror'
 export const STORE_META = 'meta'
 export const STORE_READING = 'reading'
+export const STORE_ASSETS = 'assets'
 
-const DB_VERSION = 3
+const DB_VERSION = 4
 
 const SCHEMA: Array<[string, IDBObjectStoreParameters | undefined]> = [
   [STORE_SETTINGS, undefined],
   [STORE_MIRROR, { keyPath: 'path' }],
   [STORE_META, { keyPath: 'key' }],
-  [STORE_READING, { keyPath: 'path' }]
+  [STORE_READING, { keyPath: 'path' }],
+  [STORE_ASSETS, { keyPath: 'path' }]
 ]
 
 let dbPromise: Promise<IDBDatabase> | null = null

@@ -37,6 +37,8 @@ export interface GithubClient {
   getTree(repo: Repository): Promise<GitTreeResponse>
   /** 单个文件原文（0–100MB 均可，raw 媒体类型单一路径） */
   getRawFile(repo: Repository, path: string): Promise<string>
+  /** 单个文件原始字节（资源懒加载用；同上 raw 端点） */
+  getRawBytes(repo: Repository, path: string): Promise<Uint8Array>
 }
 
 const BASE = 'https://api.github.com'
@@ -89,9 +91,18 @@ export function createGithubClient(
     },
 
     async getRawFile(repo, path) {
-      const url = `${BASE}/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}/contents/${encodePath(path)}?ref=HEAD`
-      const res = await request(url, 'application/vnd.github.raw+json')
+      const res = await fetchRaw(repo, path)
       return res.text()
+    },
+
+    async getRawBytes(repo, path) {
+      const res = await fetchRaw(repo, path)
+      return new Uint8Array(await res.arrayBuffer())
     }
+  }
+
+  async function fetchRaw(repo: Repository, path: string): Promise<Response> {
+    const url = `${BASE}/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}/contents/${encodePath(path)}?ref=HEAD`
+    return request(url, 'application/vnd.github.raw+json')
   }
 }

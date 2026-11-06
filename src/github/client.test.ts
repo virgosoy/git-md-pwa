@@ -72,6 +72,19 @@ describe('GithubClient', () => {
     )
   })
 
+  it('getRawBytes 返回原始字节（资源懒加载用）', async () => {
+    const log: Log = { urls: [], inits: [] }
+    const rawFetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      log.urls.push(String(url))
+      log.inits.push(init ?? {})
+      return new Response(new Uint8Array([104, 105]))
+    }) as typeof fetch
+    const client = createGithubClient('t', rawFetch)
+    const bytes = await client.getRawBytes({ owner: 'me', repo: 'fixtures' }, 'img/a.png')
+    expect(Array.from(bytes)).toEqual([104, 105])
+    expect(log.urls[0]).toContain('contents/img/a.png?ref=HEAD')
+  })
+
   it('网络失败抛 status 为 network 的 GithubError', async () => {
     const networkFetch = (async () => {
       throw new TypeError('Failed to fetch')

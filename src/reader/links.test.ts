@@ -9,6 +9,8 @@ describe('classifyLink', () => {
     expect(classifyLink('http://x')).toBe('external')
     expect(classifyLink('mailto:a@b.c')).toBe('external')
     expect(classifyLink('//cdn.x/s.js')).toBe('external')
+    expect(classifyLink('data:image/png;base64,AA==')).toBe('external')
+    expect(classifyLink('blob:http://x/id')).toBe('external')
   })
 
   it('锚点：仅 # 开头', () => {

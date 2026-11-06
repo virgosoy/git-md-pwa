@@ -7,6 +7,8 @@
 import { useLayoutEffect, useRef } from 'preact/hooks'
 import { renderNote } from './render'
 import { classifyLink, resolveNotePath } from './links'
+import { wireAssets } from '../assets/wire'
+import type { AssetLoader } from '../assets/wire'
 import highlightCss from 'highlight.js/styles/github-dark.css?raw'
 
 // 注入 shadow 的笔记基础排版（浏览器 UA 样式在 shadow 里很简陋）
@@ -20,6 +22,8 @@ const baseNoteCss = `
 .md-body pre { background: #0b0b0e; padding: 0.9rem; border-radius: 0.5rem; overflow-x: auto; }
 .md-body code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .md-body a { color: #3f83f8; }
+.md-body a.is-missing { color: #a1a1aa; text-decoration: none; }
+.md-body a.is-missing::after { content: "（未镜像）"; color: #a1a1aa; font-size: 0.8em; }
 .md-body img { max-width: 100%; }
 .md-body table { border-collapse: collapse; }
 .md-body th, .md-body td { border: 1px solid #3f3f46; padding: 0.35rem 0.6rem; }
@@ -31,6 +35,10 @@ export interface ReaderViewProps {
   content: string
   /** 装配时还原的阅读位置（打开时从阅读存储读取） */
   initialScrollTop?: number
+  /** 资源加载器（图/PDF 懒加载）；不传则跳过资源装配 */
+  assetLoader?: AssetLoader | null
+  /** 变化时触发重新装配（如「本篇资源全下」后让已缓存资源回填） */
+  refreshToken?: number
   onOpenNote: (targetPath: string) => void
   onScroll?: (scrollTop: number) => void
 }
@@ -39,6 +47,8 @@ export function ReaderView({
   path,
   content,
   initialScrollTop = 0,
+  assetLoader,
+  refreshToken = 0,
   onOpenNote,
   onScroll
 }: ReaderViewProps) {
@@ -79,9 +89,11 @@ export function ReaderView({
     const isNewNote = prevPathRef.current !== path
     prevPathRef.current = path
     root.innerHTML = `<style>${baseNoteCss}</style><style>${highlightCss}</style><div class="md-body">${renderNote(content)}</div>`
+    // 资源装配（图/PDF 懒加载）；refreshToken 变化触发重装（全下后回填已缓存）
+    if (assetLoader) void wireAssets(root, path, assetLoader)
     // 只在切换新笔记时还原阅读位置；同路径内容原地更新不清滚动（防中途丢位置）
     if (isNewNote) host.scrollTop = initialScrollTop
-  }, [path, content, initialScrollTop])
+  }, [path, content, initialScrollTop, assetLoader, refreshToken])
 
   return (
     <div
