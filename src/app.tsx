@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'preact/hooks'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { SettingsView } from './settings/SettingsView'
 import type { AppSettings } from './settings/store'
 import { isConfigured, loadSettings } from './settings/store'
 import { getFile, loadFiles } from './mirror/store'
 import type { StoredFile } from './mirror/store'
 import { NotesList } from './notes/NotesList'
+import { buildIndex, searchHeadings } from './search'
+import { SearchResults } from './search/SearchResults'
 import { loadReading, listRecent, recordOpen, saveScroll } from './reader/reading'
 import type { ReadingRecord } from './reader/reading'
 import { ReaderView } from './reader/ReaderView'
@@ -40,6 +42,11 @@ export function App() {
   )
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null)
   const [files, setFiles] = useState<StoredFile[]>([])
+  const [query, setQuery] = useState('')
+
+  // 标题索引：内容变化才重算（591 篇×正文解析，不同步不重复跑）
+  const index = useMemo(() => buildIndex(files), [files])
+  const hits = useMemo(() => searchHeadings(index, query), [index, query])
 
   useEffect(() => {
     loadSettings()
@@ -189,24 +196,37 @@ export function App() {
           </div>
         ) : (
           <div class="home">
-            {recent.length > 0 && (
-              <nav class="recent">
-                <h2 class="recent__title">最近打开</h2>
-                <ul class="recent__list">
-                  {recent.map((r) => (
-                    <li key={r.path}>
-                      <button class="recent__item" onClick={() => void openNote(r.path)}>
-                        {r.path}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </nav>
-            )}
-            {files.length > 0 && (
+            <input
+              class="search-input"
+              type="search"
+              placeholder="搜索标题 / 文件名"
+              value={query}
+              onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+            />
+            {query.trim() ? (
+              <SearchResults hits={hits} onOpen={(p) => void openNote(p)} />
+            ) : (
               <>
-                <h2 class="recent__title">全部笔记（{files.length}）</h2>
-                <NotesList files={files} onOpen={(p) => void openNote(p)} />
+                {recent.length > 0 && (
+                  <nav class="recent">
+                    <h2 class="recent__title">最近打开</h2>
+                    <ul class="recent__list">
+                      {recent.map((r) => (
+                        <li key={r.path}>
+                          <button class="recent__item" onClick={() => void openNote(r.path)}>
+                            {r.path}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </nav>
+                )}
+                {files.length > 0 && (
+                  <>
+                    <h2 class="recent__title">全部笔记（{files.length}）</h2>
+                    <NotesList files={files} onOpen={(p) => void openNote(p)} />
+                  </>
+                )}
               </>
             )}
           </div>
