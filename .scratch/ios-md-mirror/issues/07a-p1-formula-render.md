@@ -1,4 +1,4 @@
-Status: open
+Status: resolved
 Type: task
 Blocked by:
 
@@ -32,3 +32,11 @@ Blocked by:
 - 开关默认关；关 → `$x^2$` 字面显示。
 - 开 → `$$..$$` / `$..$` / `\begin{aligned}` **离线**渲染；`cost \$5` 保留为文本。
 - 未闭合公式 → 红色 `katex-error` 块，不崩。
+
+## Answer
+
+- 2026-11-08 完成。S1 settings `renderMath`（默认关，往返测试）；S2 render `createMd(engine?)` 工厂 + `MathEngine` 接口 + `mayHaveMath` 预检 + 定界符/`\$`/货币/错误块字面断言；S3 ReaderView 动态 import + 异步 fill（pathRef 竞态守卫 + alive）+ KaTeX CSS `?inline` 注入 shadow；S4 Workbox 字体预缓存 + verify-pwa 字体断言 + ADR-0003。
+- 方案要点：插件 `@vscode/markdown-it-katex` + katex 0.19.1 运行期注入；`throwOnError:false` → `.katex-error` 降级红块（由 baseNoteCss 上色，块公式 katex 自带 CSS 不给颜色）；`package.json` `overrides` 把插件 katex 固定到 0.19.1 去重，按需图仅剩一份 katex。
+- 评审修正：catch 降级补 wireAssets、red 错误块 CSS + 测试守卫、flushUntilKatex 轮询（消除冷启动分块时序抖动）、`BooleanKey` 命名。
+- 测试 117/117 绿，typecheck ✓，build 去重 ✓，verify:pwa ✓（含字体预缓存断言），隐私自查干净。
+- 提交：d5579ac。07b（Mermaid）已解除阻塞。
