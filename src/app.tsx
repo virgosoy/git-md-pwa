@@ -206,6 +206,7 @@ export function App() {
             assetLoader={assetLoader}
             refreshToken={readerTick}
             renderMath={settings?.renderMath ?? false}
+            renderMermaid={settings?.renderMermaid ?? false}
             onOpenNote={(p) => void openNote(p)}
             onScroll={handleScroll}
           />

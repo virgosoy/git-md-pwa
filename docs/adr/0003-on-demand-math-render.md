@@ -12,7 +12,8 @@ Status: accepted
 - **关 = 完全不接插件**：`$…$` 按字面文本渲染，主包零 katex 依赖（`/…\`、`$` 可以是正文里的普通字符）。
 - **开 = 动态加载**：渲染前先 `dynamic import('katex')` + `@vscode/markdown-it-katex`（token 级解析；`$$…$$`、`$…$`、裸 `\begin{…}\end{…}` 环境）；正文不含 `$`/`\` 时预检跳过 import。
 - 渲染期 `katex.renderToString(tex, { throwOnError: false })`：语法错误由 katex 输出 `<span class="katex-error">…源码…</span>` 红色降级块（错误前内容保留），**不抛错、不崩**。
-- 每个工厂实例 `createMd(engine?)` 独立构建 markdown-it，注入引擎时才 `md.use` 公式插件；旧 `renderNote`（无引擎）行为不变，供资源提取等其它调用方。
+- 渲染工厂 `createMd(opts)`（`{ math?, mermaid? }`）独立构建 markdown-it，注入 math 引擎时才 `md.use` 公式插件、mermaid 开启才把 ```mermaid 围栏转宿主块；旧 `renderNote`（无 options）行为不变，供资源提取等其它调用方。
+- **Mermaid 延续同一模式（07b）**：`renderMermaid` 默认关，开且正文含 ```mermaid 围栏时 markdown-it 输出带 `data-mermaid` 的宿主块（源码转义保留），装配层再按需 `import('mermaid')` 渲染成自包含 SVG 注入 shadow；语法/render 失败保留源码 + 内联「渲染失败」标，分块加载失败则静默保留源码块（不误加标），不崩。
 - KaTeX CSS 经 `?inline` 注入 shadow root（字体 `url()` 由 Vite 重写为产物资产绝对路径；`?raw` 会 404）；Workbox `globPatterns` 含 `woff,woff2,ttf`，字体离线预缓存。
 
 ## 前提与边界
@@ -30,7 +31,8 @@ Status: accepted
 
 - 开公式后，含 `$`/`\` 的正文第一次渲染会多一次分块加载请求；失败时退回无公式渲染（不白屏）。
 - `\$` 转义、货币 `$5` 不误伤、未闭合 `$` 维持字面——这些行为由插件定界符规则 + 本应用集成测试共同保障。
-- 按需分块：`math`（装配 + KaTeX CSS 字符串）与 `katex`（含插件与 katex 本体）；`package.json` `overrides` 把插件的 katex 依赖固定到 `0.19.1` 与根依赖去重，避免按需图里出现第二份 katex（约 78KB gz）。
+- 按需分块：`math`（装配 + KaTeX CSS 字符串）与 `katex`（ESM 本体）。`package.json` `overrides` 把**所有**传递依赖（含插件、mermaid 的数学图）的 katex 版本统一到 `0.19.1` 并去重。
+- 仍存在两份 katex **产物**块：插件 `@vscode/markdown-it-katex` 是 CJS（`require('katex')` 解析到 katex 的 CJS 构建），应用走 ESM 构建——同一版本两套入口、各自成块。CJS 那份仅是插件默认 fallback 死重（我们恒注入 ESM 实例），只随公式按需块加载（约 78KB gz），可接受。
 - 语法错误的降级红块由 `baseNoteCss` 的 `.katex-error` 规则提供（katex 自带 CSS 不给该 class 上色；块公式错误没有内联 color）。
 
 ## 参考

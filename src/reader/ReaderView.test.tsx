@@ -1,7 +1,18 @@
-import { describe, it, expect, afterEach, vi } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { render } from 'preact'
 import type { ComponentChild } from 'preact'
 import { ReaderView } from './ReaderView'
+
+// 真 mermaid 只在 mermaid.smoke.test.ts 冒烟（巨型依赖，避免每个文件都 fork 一份）。
+// 本文件的 renderMermaid 集成走 mock 缝：mock 渲染层，仍跑真实的 wireMermaid 装配代码。
+vi.mock('mermaid', () => ({
+  default: { initialize: vi.fn(), parse: vi.fn(), render: vi.fn() }
+}))
+
+const mermaidMock = (await import('mermaid')).default as unknown as {
+  parse: ReturnType<typeof vi.fn>
+  render: ReturnType<typeof vi.fn>
+}
 
 // S4 · 阅读器组件：Shadow DOM 作用域装配 + 内链/外链点击行为
 
@@ -37,6 +48,23 @@ async function flushUntilKatex(container: HTMLElement): Promise<void> {
       | (HTMLElement & { shadowRoot: ShadowRoot })
       | null
     return host != null && !!host.shadowRoot.querySelector('.katex, .katex-error')
+  }
+  for (let i = 0; i < 30 && !isDone(); i++) {
+    await new Promise((r) => setTimeout(r, 10))
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
+  }
+}
+
+/** 等到 shadow 里出现 Mermaid svg 或「渲染失败」标（07b 异步装配）。 */
+async function flushUntilMermaid(container: HTMLElement): Promise<void> {
+  const isDone = () => {
+    const host = container.querySelector('.reader') as
+      | (HTMLElement & { shadowRoot: ShadowRoot })
+      | null
+    return (
+      host != null &&
+      !!host.shadowRoot.querySelector('[data-mermaid] svg, [data-mermaid] .md-mermaid-error')
+    )
   }
   for (let i = 0; i < 30 && !isDone(); i++) {
     await new Promise((r) => setTimeout(r, 10))
@@ -198,5 +226,52 @@ describe('ReaderView renderMath（07a KaTeX）', () => {
     const root = shadowOf(c)
     expect(root.querySelector('h1')?.textContent).toBe('T')
     expect(root.querySelector('style[data-katex]')).toBeNull()
+  })
+})
+
+describe('ReaderView renderMermaid（07b）', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+    vi.unstubAllGlobals()
+  })
+
+  beforeEach(() => {
+    mermaidMock.parse.mockReset()
+    mermaidMock.render.mockReset()
+  })
+
+  const FLOW = '# T\n\n```mermaid\ngraph TD;\n  A-->B\n```'
+  const BAD = '# T\n\n```mermaid\ngraph TD;\n  [invalid\n```'
+
+  it('默认（关）：```mermaid 显示为代码块，无 data-mermaid 宿主块', async () => {
+    const c = mount(<ReaderView path="docs/a.md" content={FLOW} onOpenNote={() => {}} />)
+    await flush()
+    const root = shadowOf(c)
+    expect(root.querySelector('pre code.language-mermaid')).toBeTruthy()
+    expect(root.querySelector('.md-mermaid')).toBeNull()
+    expect(mermaidMock.render).not.toHaveBeenCalled()
+  })
+
+  it('开 + 合法图：wireMermaid 装配出 svg（mock 渲染层，真渲染见冒烟）', async () => {
+    mermaidMock.parse.mockResolvedValue(true)
+    mermaidMock.render.mockResolvedValue({ svg: '<svg id="mock-mm"><g/></svg>' })
+    const c = mount(
+      <ReaderView path="docs/a.md" content={FLOW} renderMermaid onOpenNote={() => {}} />
+    )
+    await flushUntilMermaid(c)
+    const root = shadowOf(c)
+    expect(root.querySelector('[data-mermaid] svg')?.id).toBe('mock-mm')
+    expect(root.querySelector('.md-mermaid-error')).toBeNull()
+  })
+
+  it('开 + 非法图：保留源码 + 「渲染失败」标，不崩', async () => {
+    mermaidMock.parse.mockRejectedValue(new Error('parse err'))
+    const c = mount(
+      <ReaderView path="docs/a.md" content={BAD} renderMermaid onOpenNote={() => {}} />
+    )
+    await flushUntilMermaid(c)
+    const root = shadowOf(c)
+    expect(root.querySelector('.md-mermaid-error')?.textContent).toBe('渲染失败')
+    expect(root.querySelector('[data-mermaid]')?.textContent).toContain('[invalid')
   })
 })

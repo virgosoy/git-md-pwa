@@ -25,12 +25,12 @@ This repository is **public** (GitHub Pages hosting requires it). It must never 
 - `src/idb.ts` — **IndexedDB schema 唯一所有者**。DB `md-mirror`（v4）：`settings`/`mirror`(path)/`meta`(key)/`reading`(path)/`assets`(path)。加存储表 → 只改这一处 + `DB_VERSION` 递增。
 - `src/github/client.ts` — GitHub REST 客户端：trees 拉树、contents raw 取原文/字节。**绝不发送 `X-GitHub-Api-Version` 头**（浏览器 CORS 预检会失败）；空令牌走匿名只读。
 - `src/mirror/{tree,store,mirror}.ts` — 镜像策略（只 `.md`、>10MB 标 `too-large`、增量 diff）、持久化、**两阶段编排**（先全部网络拉取、全成功才写库 → 失败不破坏旧镜像，这是离线可用的根基）。
-- `src/reader/{render,links,reading,ReaderView}.tsx` — markdown-it 渲染（表格+highlight，**原始 HTML 透传**，ADR-0002）；每篇笔记进**独立 Shadow DOM**（样式不外漏、innerHTML 的 script 天然不执行）；内链分类/路径解析、阅读位置+最近、资源装配。
+- `src/reader/{render,mermaid,links,reading,ReaderView}.tsx` — markdown-it 渲染（`createMd(opts)` 工厂：可选注入 KaTeX 公式引擎 `math` + 开启 Mermaid 围栏宿主块 `mermaid`；表格+highlight，**原始 HTML 透传**，ADR-0002/0003）；每篇笔记进**独立 Shadow DOM**（样式不外漏、innerHTML 的 script 天然不执行）；内链分类/路径解析、阅读位置+最近、资源装配；`mermaid.ts` 按需 `import('mermaid')` 把放 `data-mermaid` 宿主块渲染成自包含 SVG 注入 shadow（语法错误降级保留源码+标）。
 - `src/sync/{sync,time,SyncBanner}.tsx` — 同步编排（`runSync` 把 mirrorRepo 抛错映射为 typed 结果）、时间文案、状态横幅（「离线 · 上次同步 x 分钟前」）。
 - `src/notes/{group,NotesList}.tsx` — 全部笔记按顶层目录分组列表。
 - `src/search/{index,SearchResults}.tsx` — 全局标题搜索（H1–H6 + 文件名/路径；命中标「文件」/「标题 H{n}」，可双标）。
 - `src/assets/{extract,store,pipeline,wire}.ts` — 资源懒加载：API 拉字节→dataURL 入 `assets` 表→装配给 img/a；>10MB 占位；「全下」。
-- `src/settings/{store,SettingsView}.tsx` — 设置（PAT / owner/repo / 同步开关默认开；公开库令牌可不填）。
+- `src/settings/{store,SettingsView}.tsx` — 设置（PAT / owner/repo / 同步开关默认开、公式 KaTeX / Mermaid 开关默认关；公开库令牌可不填）。
 
 ### 测试缝约定
 

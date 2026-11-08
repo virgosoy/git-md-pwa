@@ -33,6 +33,14 @@ export default defineConfig({
   build: { target: 'es2022' },
   test: {
     environment: 'jsdom',
-    setupFiles: ['./src/test/setup.ts']
+    setupFiles: ['./src/test/setup.ts'],
+    // mermaid 是巨型按需依赖：限制并发 worker 数，避免多个 fork 同时转译/加载它
+    // 在两三台开发机上把全量测试跑 OOM（区域分配失败）。4 在本机 = 稳定全绿 + 够快。
+    maxWorkers: 4,
+    server: {
+      deps: {
+        external: ['mermaid'] // 真 mermaid 冒烟用 Node 原生加载预构建单文件，跳过转译整个图
+      }
+    }
   }
 })

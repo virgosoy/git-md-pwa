@@ -15,20 +15,22 @@ describe('settingsStore', () => {
     await clearSettings()
   })
 
-  it('默认 autoSync 为开、renderMath 为关，其余字段为空', async () => {
+  it('默认 autoSync 为开、renderMath/renderMermaid 为关，其余字段为空', async () => {
     const s = await loadSettings()
     expect(s).toEqual(DEFAULT_SETTINGS)
     expect(s.autoSync).toBe(true)
     expect(s.renderMath).toBe(false)
+    expect(s.renderMermaid).toBe(false)
   })
 
-  it('保存后重新加载，往返保留 token/owner/repo/autoSync/renderMath', async () => {
+  it('保存后重新加载，往返保留 token/owner/repo/autoSync/renderMath/renderMermaid', async () => {
     await saveSettings({
       token: 'ghp_test_dummy',
       owner: 'me',
       repo: 'fixtures',
       autoSync: false,
-      renderMath: true
+      renderMath: true,
+      renderMermaid: true
     })
     const s = await loadSettings()
     expect(s).toEqual({
@@ -36,7 +38,8 @@ describe('settingsStore', () => {
       owner: 'me',
       repo: 'fixtures',
       autoSync: false,
-      renderMath: true
+      renderMath: true,
+      renderMermaid: true
     })
   })
 
@@ -56,7 +59,8 @@ describe('settingsStore', () => {
       owner: 'a',
       repo: 'c',
       autoSync: false,
-      renderMath: false
+      renderMath: false,
+      renderMermaid: false
     })
   })
 
@@ -67,15 +71,43 @@ describe('settingsStore', () => {
     expect((await loadSettings()).renderMath).toBe(false)
   })
 
+  it('renderMermaid 单独持久化：false→true 往返不丢', async () => {
+    await saveSettings({ renderMermaid: true })
+    expect((await loadSettings()).renderMermaid).toBe(true)
+    await saveSettings({ renderMermaid: false })
+    expect((await loadSettings()).renderMermaid).toBe(false)
+  })
+
   it('isConfigured：owner+repo 非空即视为已配置（公开库可不填令牌）', () => {
     expect(
-      isConfigured({ token: '', owner: 'me', repo: 'fixtures', autoSync: true, renderMath: false })
+      isConfigured({
+        token: '',
+        owner: 'me',
+        repo: 'fixtures',
+        autoSync: true,
+        renderMath: false,
+        renderMermaid: false
+      })
     ).toBe(true)
     expect(
-      isConfigured({ token: 'x', owner: '', repo: 'fixtures', autoSync: true, renderMath: false })
+      isConfigured({
+        token: 'x',
+        owner: '',
+        repo: 'fixtures',
+        autoSync: true,
+        renderMath: false,
+        renderMermaid: false
+      })
     ).toBe(false)
     expect(
-      isConfigured({ token: 'x', owner: 'me', repo: '', autoSync: true, renderMath: false })
+      isConfigured({
+        token: 'x',
+        owner: 'me',
+        repo: '',
+        autoSync: true,
+        renderMath: false,
+        renderMermaid: false
+      })
     ).toBe(false)
     expect(isConfigured(DEFAULT_SETTINGS)).toBe(false)
   })

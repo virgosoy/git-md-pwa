@@ -17,6 +17,8 @@ export interface AppSettings {
   autoSync: boolean
   /** 渲染数学公式（KaTeX），默认关；关/错=静默当源码 */
   renderMath: boolean
+  /** 渲染 Mermaid 图表，默认关；关/错=围栏当普通代码块 */
+  renderMermaid: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -24,7 +26,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   owner: '',
   repo: '',
   autoSync: true,
-  renderMath: false
+  renderMath: false,
+  renderMermaid: false
 }
 
 const KEY = 'app'

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { MarkdownIt } from 'markdown-it'
-import { renderNote, createMd, mayHaveMath } from './render'
+import { renderNote, createMd, mayHaveMath, mayHaveMermaid } from './render'
 import type { MathEngine } from './render'
 import { loadMathEngine } from './math'
 
@@ -66,27 +66,27 @@ describe('createMd(engine?)', () => {
   })
 
   it('注入 KaTeX 引擎：$$…$$ 块渲染为排版公式', async () => {
-    const render = createMd(await mathEngine())
+    const render = createMd({ math: await mathEngine() })
     const html = render('$$x^2$$')
     expect(html).toContain('<p class="katex-block">')
     expect(html).toContain('class="katex-display"')
   })
 
   it('注入 KaTeX 引擎：$…$ 行内渲染', async () => {
-    const render = createMd(await mathEngine())
+    const render = createMd({ math: await mathEngine() })
     const html = render('内联 $a+b$ 结束')
     expect(html).toContain('<span class="katex">')
   })
 
   it('注入 KaTeX 引擎：裸 \\begin{aligned}…\\end{aligned} 环境渲染为块公式', async () => {
-    const render = createMd(await mathEngine())
+    const render = createMd({ math: await mathEngine() })
     const html = render('\\begin{aligned}x\\end{aligned}')
     expect(html).toContain('<p class="katex-block">')
     expect(html).toContain('class="katex-display"')
   })
 
   it('注入 KaTeX 引擎：\\$ 转义与货币 $ 不被误伤', async () => {
-    const render = createMd(await mathEngine())
+    const render = createMd({ math: await mathEngine() })
     const html = render('cost \\$5 和 $10 元，$5/个')
     expect(html).toContain('cost $5')
     expect(html).toContain('$10 元')
@@ -95,14 +95,14 @@ describe('createMd(engine?)', () => {
   })
 
   it('注入 KaTeX 引擎：语法错误输出 .katex-error 块且保留源码，不崩', async () => {
-    const render = createMd(await mathEngine())
+    const render = createMd({ math: await mathEngine() })
     const html = render('$\\frac{x+}$')
     expect(html).toContain('katex-error')
     expect(html).toContain('\\frac{x+}')
   })
 
   it('注入 KaTeX 引擎：未闭合的单个 $ 维持字面（静默当源码）', async () => {
-    const render = createMd(await mathEngine())
+    const render = createMd({ math: await mathEngine() })
     const html = render('示例 $x^2 没有闭合')
     expect(html).toContain('$x^2 没有闭合')
   })
@@ -114,7 +114,7 @@ describe('createMd(engine?)', () => {
         calls += 1
       }
     }
-    const render = createMd(stub)
+    const render = createMd({ math: stub })
     render('# a')
     render('# b')
     expect(calls).toBe(1)
@@ -128,5 +128,53 @@ describe('mayHaveMath 预检', () => {
   it('含 $ 或反斜杠 → true', () => {
     expect(mayHaveMath('有 $x$ 公式')).toBe(true)
     expect(mayHaveMath('有 \\begin{aligned}')).toBe(true)
+  })
+})
+
+describe('createMd mermaid（07b）', () => {
+  const MERMAID = '```mermaid\ngraph TD;\n  A-->B<br>\n```'
+
+  it('不开启：```mermaid 围栏走普通代码块，不出现 data-mermaid', () => {
+    const html = createMd()(MERMAID)
+    expect(html).toContain('class="language-mermaid"')
+    expect(html).not.toContain('data-mermaid')
+  })
+
+  it('开启：围栏输出 data-mermaid 宿主块，源码以转义文本保留（供降级）', () => {
+    const html = createMd({ mermaid: true })(MERMAID)
+    expect(html).toContain('<div class="md-mermaid" data-mermaid>')
+    expect(html).toContain('A--&gt;B&lt;br&gt;') // 转义保留
+    expect(html).not.toContain('<br>')
+    expect(html).not.toContain('language-mermaid')
+    expect(html).not.toContain('hljs')
+  })
+
+  it('开启：非 mermaid 围栏（如 js）仍正常高亮，不被吞', () => {
+    const html = createMd({ mermaid: true })('```js\nconst x = 1\n```')
+    expect(html).toMatch(/<pre[^>]*><code[^>]*class="language-js"/)
+    expect(html).toContain('<span class="hljs-')
+  })
+
+  it('开启 + 数学引擎并存：两类渲染不互相干扰', async () => {
+    const render = createMd({ math: await mathEngine(), mermaid: true })
+    const html = render('$$x^2$$\n\n' + MERMAID)
+    expect(html).toContain('katex-display')
+    expect(html).toContain('data-mermaid')
+  })
+})
+
+describe('mayHaveMermaid 预检', () => {
+  it('无 mermaid 围栏 → false', () => {
+    expect(mayHaveMermaid('纯文本')).toBe(false)
+    expect(mayHaveMermaid('```js\nconst x=1\n```')).toBe(false)
+  })
+  it('含 mermaid 围栏 → true（大小写/空格/波浪号都算）', () => {
+    expect(mayHaveMermaid('```mermaid\ngraph TD;A-->B\n```')).toBe(true)
+    expect(mayHaveMermaid('```MERMAID\ngraph TD;A-->B\n```')).toBe(true)
+    expect(mayHaveMermaid('``` mermaid\ngraph TD;A-->B\n```')).toBe(true)
+    expect(mayHaveMermaid('~~~mermaid\npie title T\n~~~')).toBe(true)
+  })
+  it('围栏 info 不是纯 mermaid（如 ```mermaid {}）→ false（与渲染器判定一致）', () => {
+    expect(mayHaveMermaid('```mermaid {theme: default}\ngraph TD;A-->B\n```')).toBe(false)
   })
 })

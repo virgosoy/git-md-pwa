@@ -104,6 +104,16 @@ export function SettingsView({ onClose, onSaved }: SettingsViewProps) {
         <span>渲染数学公式（KaTeX，默认关闭；关或写错时当普通文本）</span>
       </label>
 
+      <label class="field field--row">
+        <input
+          type="checkbox"
+          checked={form.renderMermaid}
+          disabled={!loaded}
+          onChange={bindCheck('renderMermaid')}
+        />
+        <span>渲染 Mermaid 图表（默认关闭；关或写错时显示代码块）</span>
+      </label>
+
       <div class="settings__actions">
         <button type="submit" class="btn btn--primary" disabled={!loaded}>
           保存

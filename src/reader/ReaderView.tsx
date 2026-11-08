@@ -5,7 +5,9 @@
 // 锚点保留默认滚动；资源留给票 05。
 
 import { useLayoutEffect, useRef } from 'preact/hooks'
-import { renderNote, mayHaveMath, createMd } from './render'
+import { renderNote, mayHaveMath, mayHaveMermaid, createMd } from './render'
+import type { MathEngine } from './render'
+import { wireMermaid } from './mermaid'
 import { classifyLink, resolveNotePath } from './links'
 import { wireAssets } from '../assets/wire'
 import type { AssetLoader } from '../assets/wire'
@@ -35,6 +37,9 @@ const baseNoteCss = `
   padding: 0.2em 0.4em;
   border-radius: 0.25em;
 }
+.md-body .md-mermaid { margin: 1rem 0; overflow-x: auto; }
+.md-body .md-mermaid svg { max-width: 100%; height: auto; }
+.md-body .md-mermaid-error { color: #cc0000; font-size: 0.85em; margin: 0.25rem 0 0; }
 `
 
 export interface ReaderViewProps {
@@ -48,6 +53,8 @@ export interface ReaderViewProps {
   refreshToken?: number
   /** 渲染数学公式（KaTeX，07a）；关/无公式正文→零依赖按需加载 */
   renderMath?: boolean
+  /** 渲染 Mermaid 图表（07b）；关/无围栏→```mermaid 当普通代码块 */
+  renderMermaid?: boolean
   onOpenNote: (targetPath: string) => void
   onScroll?: (scrollTop: number) => void
 }
@@ -59,6 +66,7 @@ export function ReaderView({
   assetLoader,
   refreshToken = 0,
   renderMath = false,
+  renderMermaid = false,
   onOpenNote,
   onScroll
 }: ReaderViewProps) {
@@ -108,30 +116,36 @@ export function ReaderView({
 
     let alive = true
     async function fill(): Promise<void> {
-      let html: string
+      // 07a：开公式才动态 import math（引擎 + KaTeX CSS），失败则 engine 保持空转无公式。
+      let engine: MathEngine | undefined
       try {
         if (renderMath && mayHaveMath(content)) {
           const mod = await import('./math')
           if (!alive || pathRef.current !== path) return
-          const engine = await mod.loadMathEngine()
+          engine = await mod.loadMathEngine()
           if (!alive || pathRef.current !== path) return
           // KaTeX CSS 注入 shadow（字体 URL 已由 Vite 重写为产物资产路径）
           const katexStyle = document.createElement('style')
           katexStyle.setAttribute('data-katex', '')
           katexStyle.textContent = mod.KATEX_CSS
           shadowEl.appendChild(katexStyle)
-          html = createMd(engine)(content)
-        } else {
-          html = renderNote(content)
         }
       } catch {
-        // 按需分块加载失败（如断网未缓存）：退回无公式渲染，不白屏不崩
-        if (!alive || pathRef.current !== path) return
+        // 数学按需分块加载失败：本次退化为无公式渲染（不白屏不崩）
+      }
+      let html: string
+      try {
+        html = createMd({ math: engine, mermaid: renderMermaid })(content)
+      } catch {
         html = renderNote(content)
       }
       if (!alive || pathRef.current !== path) return
       mdBody.innerHTML = html
       if (assetLoader) void wireAssets(shadowEl, path, assetLoader)
+      // 07b：Mermaid 装配（异步按需加载；alive+pathRef 守卫，切走不写回旧图）
+      if (renderMermaid && mayHaveMermaid(content)) {
+        void wireMermaid(mdBody, { alive: () => alive && pathRef.current === path })
+      }
       // 只在切换新笔记时还原阅读位置；同路径内容原地更新不清滚动（防中途丢位置）
       if (isNewNote) hostEl.scrollTop = initialScrollTop
     }
@@ -139,7 +153,7 @@ export function ReaderView({
     return () => {
       alive = false
     }
-  }, [path, content, initialScrollTop, assetLoader, refreshToken, renderMath])
+  }, [path, content, initialScrollTop, assetLoader, refreshToken, renderMath, renderMermaid])
 
   return (
     <div
