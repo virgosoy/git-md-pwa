@@ -15,13 +15,16 @@ export interface AppSettings {
   repo: string
   /** 同步开关，默认开 */
   autoSync: boolean
+  /** 渲染数学公式（KaTeX），默认关；关/错=静默当源码 */
+  renderMath: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   token: '',
   owner: '',
   repo: '',
-  autoSync: true
+  autoSync: true,
+  renderMath: false
 }
 
 const KEY = 'app'

@@ -3,6 +3,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // 票 01 收尾验证：构建产物里必须有离线外壳（SW + manifest），且 SW 预缓存首页。
+// 票 07a 追加：KaTeX 按需渲染的字体必须预缓存，否则离线开公式会白字。
 // 用法：npm run verify:pwa
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const dist = join(root, 'dist')
@@ -18,5 +19,8 @@ for (const f of ['sw.js', 'manifest.webmanifest', 'index.html']) {
 
 const sw = readFileSync(join(dist, 'sw.js'), 'utf8')
 if (!sw.includes('index.html')) fail('sw.js 预缓存清单未包含 index.html（离线外壳不完整）')
+if (!/KaTeX_[^"']*\.(?:woff2|woff|ttf)/.test(sw)) {
+  fail('sw.js 预缓存清单未包含 KaTeX 字体（woff2/woff/ttf），离线开公式会白字')
+}
 
-console.log('✓ PWA 产物完整：sw.js / manifest.webmanifest / index.html 均在，外壳可离线。')
+console.log('✓ PWA 产物完整：sw.js / manifest.webmanifest / index.html 均在，外壳可离线；KaTeX 字体已预缓存。')

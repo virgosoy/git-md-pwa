@@ -5,7 +5,7 @@
 // 锚点保留默认滚动；资源留给票 05。
 
 import { useLayoutEffect, useRef } from 'preact/hooks'
-import { renderNote } from './render'
+import { renderNote, mayHaveMath, createMd } from './render'
 import { classifyLink, resolveNotePath } from './links'
 import { wireAssets } from '../assets/wire'
 import type { AssetLoader } from '../assets/wire'
@@ -28,6 +28,13 @@ const baseNoteCss = `
 .md-body table { border-collapse: collapse; }
 .md-body th, .md-body td { border: 1px solid #3f3f46; padding: 0.35rem 0.6rem; }
 .md-body blockquote { border-left: 3px solid #3f3f46; margin: 0; padding-left: 0.8rem; color: #a1a1aa; }
+.md-body .katex-error {
+  /* 07a：公式语法错误的降级红块（katex CSS 未定义 .katex-error 颜色，行内/块公式都要可见） */
+  color: #cc0000;
+  background: rgba(204, 0, 0, 0.06);
+  padding: 0.2em 0.4em;
+  border-radius: 0.25em;
+}
 `
 
 export interface ReaderViewProps {
@@ -39,6 +46,8 @@ export interface ReaderViewProps {
   assetLoader?: AssetLoader | null
   /** 变化时触发重新装配（如「本篇资源全下」后让已缓存资源回填） */
   refreshToken?: number
+  /** 渲染数学公式（KaTeX，07a）；关/无公式正文→零依赖按需加载 */
+  renderMath?: boolean
   onOpenNote: (targetPath: string) => void
   onScroll?: (scrollTop: number) => void
 }
@@ -49,6 +58,7 @@ export function ReaderView({
   initialScrollTop = 0,
   assetLoader,
   refreshToken = 0,
+  renderMath = false,
   onOpenNote,
   onScroll
 }: ReaderViewProps) {
@@ -64,9 +74,10 @@ export function ReaderView({
   useLayoutEffect(() => {
     const host = hostRef.current
     if (!host) return
+    const hostEl = host
     let root = rootRef.current
     if (!root) {
-      root = host.attachShadow({ mode: 'open' })
+      root = hostEl.attachShadow({ mode: 'open' })
       rootRef.current = root
       root.addEventListener('click', (e) => {
         const a = (e.target as Element | null)?.closest?.('a')
@@ -86,14 +97,49 @@ export function ReaderView({
         // anchor：默认滚动；asset：票 05 懒加载
       })
     }
+    const shadowEl = root
     const isNewNote = prevPathRef.current !== path
     prevPathRef.current = path
-    root.innerHTML = `<style>${baseNoteCss}</style><style>${highlightCss}</style><div class="md-body">${renderNote(content)}</div>`
-    // 资源装配（图/PDF 懒加载）；refreshToken 变化触发重装（全下后回填已缓存）
-    if (assetLoader) void wireAssets(root, path, assetLoader)
-    // 只在切换新笔记时还原阅读位置；同路径内容原地更新不清滚动（防中途丢位置）
-    if (isNewNote) host.scrollTop = initialScrollTop
-  }, [path, content, initialScrollTop, assetLoader, refreshToken])
+    // 骨架（基础排版 + 高亮 + 容器）先同步落位；正文内容由 fill 填充。
+    // 07a：开公式时才动态 import('./math') 拿引擎与 KaTeX CSS，避免主包常驻 katex。
+    shadowEl.innerHTML = `<style>${baseNoteCss}</style><style>${highlightCss}</style><div class="md-body"></div>`
+    shadowEl.querySelectorAll('style[data-katex]').forEach((s) => s.remove())
+    const mdBody = shadowEl.querySelector('.md-body') as HTMLDivElement
+
+    let alive = true
+    async function fill(): Promise<void> {
+      let html: string
+      try {
+        if (renderMath && mayHaveMath(content)) {
+          const mod = await import('./math')
+          if (!alive || pathRef.current !== path) return
+          const engine = await mod.loadMathEngine()
+          if (!alive || pathRef.current !== path) return
+          // KaTeX CSS 注入 shadow（字体 URL 已由 Vite 重写为产物资产路径）
+          const katexStyle = document.createElement('style')
+          katexStyle.setAttribute('data-katex', '')
+          katexStyle.textContent = mod.KATEX_CSS
+          shadowEl.appendChild(katexStyle)
+          html = createMd(engine)(content)
+        } else {
+          html = renderNote(content)
+        }
+      } catch {
+        // 按需分块加载失败（如断网未缓存）：退回无公式渲染，不白屏不崩
+        if (!alive || pathRef.current !== path) return
+        html = renderNote(content)
+      }
+      if (!alive || pathRef.current !== path) return
+      mdBody.innerHTML = html
+      if (assetLoader) void wireAssets(shadowEl, path, assetLoader)
+      // 只在切换新笔记时还原阅读位置；同路径内容原地更新不清滚动（防中途丢位置）
+      if (isNewNote) hostEl.scrollTop = initialScrollTop
+    }
+    void fill()
+    return () => {
+      alive = false
+    }
+  }, [path, content, initialScrollTop, assetLoader, refreshToken, renderMath])
 
   return (
     <div

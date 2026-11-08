@@ -205,6 +205,7 @@ export function App() {
             initialScrollTop={current.scrollTop}
             assetLoader={assetLoader}
             refreshToken={readerTick}
+            renderMath={settings?.renderMath ?? false}
             onOpenNote={(p) => void openNote(p)}
             onScroll={handleScroll}
           />

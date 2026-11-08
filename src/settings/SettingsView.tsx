@@ -2,6 +2,9 @@ import { useEffect, useState } from 'preact/hooks'
 import type { AppSettings } from './store'
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from './store'
 
+/** AppSettings 中的布尔开关键（bindCheck 只对这些键开放） */
+type BooleanKey = { [K in keyof AppSettings]: AppSettings[K] extends boolean ? K : never }[keyof AppSettings]
+
 export interface SettingsViewProps {
   onClose: () => void
   onSaved?: () => void
@@ -28,8 +31,8 @@ export function SettingsView({ onClose, onSaved }: SettingsViewProps) {
     return (e: Event) => set(key, (e.target as HTMLInputElement).value as AppSettings[K])
   }
 
-  function bindCheck(key: 'autoSync') {
-    return (e: Event) => set(key, (e.target as HTMLInputElement).checked)
+  function bindCheck<K extends BooleanKey>(key: K) {
+    return (e: Event) => set(key, (e.target as HTMLInputElement).checked as AppSettings[K])
   }
 
   async function onSubmit(e: Event) {
@@ -89,6 +92,16 @@ export function SettingsView({ onClose, onSaved }: SettingsViewProps) {
           onChange={bindCheck('autoSync')}
         />
         <span>打开 App 时自动同步（默认勾选）</span>
+      </label>
+
+      <label class="field field--row">
+        <input
+          type="checkbox"
+          checked={form.renderMath}
+          disabled={!loaded}
+          onChange={bindCheck('renderMath')}
+        />
+        <span>渲染数学公式（KaTeX，默认关闭；关或写错时当普通文本）</span>
       </label>
 
       <div class="settings__actions">

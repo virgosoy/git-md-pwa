@@ -23,6 +23,27 @@ async function flush(): Promise<void> {
   await new Promise((r) => requestAnimationFrame(() => r(null)))
 }
 
+/** 开公式时的异步路径：动态 import katex 需要多等几个任务（宏任务 + rAF）。 */
+async function flushMath(): Promise<void> {
+  await new Promise((r) => setTimeout(r, 0))
+  await new Promise((r) => requestAnimationFrame(() => r(null)))
+  await new Promise((r) => setTimeout(r, 0))
+}
+
+/** 等到 shadow 里出现 KaTeX 排版/错误元素（轮询，容忍冷启动 import 的分块渲染耗时）。 */
+async function flushUntilKatex(container: HTMLElement): Promise<void> {
+  const isDone = () => {
+    const host = container.querySelector('.reader') as
+      | (HTMLElement & { shadowRoot: ShadowRoot })
+      | null
+    return host != null && !!host.shadowRoot.querySelector('.katex, .katex-error')
+  }
+  for (let i = 0; i < 30 && !isDone(); i++) {
+    await new Promise((r) => setTimeout(r, 10))
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
+  }
+}
+
 function mount(vnode: ComponentChild): HTMLElement {
   const container = document.createElement('div')
   document.body.appendChild(container)
@@ -112,5 +133,70 @@ describe('ReaderView', () => {
 
     expect(host.scrollTop).toBe(77)
     expect(shadowOf(c).querySelector('h1')?.textContent).toBe('v2')
+  })
+})
+
+describe('ReaderView renderMath（07a KaTeX）', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+    vi.unstubAllGlobals()
+  })
+
+  it('默认（关）：$…$ 字面显示，不出现 katex 元素', async () => {
+    const c = mount(
+      <ReaderView path="docs/a.md" content={'# T\n\n$x^2$'} onOpenNote={() => {}} />
+    )
+    await flushMath()
+    const root = shadowOf(c)
+    expect(root.querySelector('.md-body')?.textContent).toContain('$x^2$')
+    expect(root.querySelector('.katex')).toBeNull()
+  })
+
+  it('开 + 含公式：异步注入 KaTeX 排版的 .katex 元素与 CSS style', async () => {
+    const c = mount(
+      <ReaderView
+        path="docs/a.md"
+        content={'# T\n\n内联 $a+b$ 公式'}
+        renderMath
+        onOpenNote={() => {}}
+      />
+    )
+    await flushUntilKatex(c)
+    const root = shadowOf(c)
+    expect(root.querySelector('.katex')).toBeTruthy()
+    expect(root.querySelector('style[data-katex]')).toBeTruthy()
+    expect(root.querySelector('h1')?.textContent).toBe('T')
+  })
+
+  it('开 + 坏公式：红色 .katex-error 块出现，不崩', async () => {
+    const c = mount(
+      <ReaderView
+        path="docs/a.md"
+        content={'# T\n\n$\\frac{x+}$'}
+        renderMath
+        onOpenNote={() => {}}
+      />
+    )
+    await flushUntilKatex(c)
+    const root = shadowOf(c)
+    expect(root.querySelector('.katex-error')).toBeTruthy()
+    // 验收「红色错误块」：baseNoteCss 必须给 .katex-error 上色（块公式 katex 自带 CSS 不给颜色）
+    const cssTexts = [...root.querySelectorAll('style')].map((s) => s.textContent ?? '')
+    expect(cssTexts.some((t) => /\.katex-error\s*\{[^}]*color:\s*#cc0000/.test(t))).toBe(true)
+  })
+
+  it('开但正文无 $/反斜杠：跳过 katex 加载（无 katex style），仍正常渲染', async () => {
+    const c = mount(
+      <ReaderView
+        path="docs/a.md"
+        content={'# T\n\n纯文本'}
+        renderMath
+        onOpenNote={() => {}}
+      />
+    )
+    await flush()
+    const root = shadowOf(c)
+    expect(root.querySelector('h1')?.textContent).toBe('T')
+    expect(root.querySelector('style[data-katex]')).toBeNull()
   })
 })

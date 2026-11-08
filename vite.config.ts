@@ -24,7 +24,8 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
+        // 字体后缀：KaTeX 按需渲染的产物字体必须预缓存，否则离线开公式白字节（07a）
+        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest,woff,woff2,ttf}'],
         navigateFallback: 'index.html'
       }
     })

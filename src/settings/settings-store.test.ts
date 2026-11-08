@@ -15,25 +15,28 @@ describe('settingsStore', () => {
     await clearSettings()
   })
 
-  it('默认 autoSync 为开，其余字段为空', async () => {
+  it('默认 autoSync 为开、renderMath 为关，其余字段为空', async () => {
     const s = await loadSettings()
     expect(s).toEqual(DEFAULT_SETTINGS)
     expect(s.autoSync).toBe(true)
+    expect(s.renderMath).toBe(false)
   })
 
-  it('保存后重新加载，往返保留 token/owner/repo/autoSync', async () => {
+  it('保存后重新加载，往返保留 token/owner/repo/autoSync/renderMath', async () => {
     await saveSettings({
       token: 'ghp_test_dummy',
       owner: 'me',
       repo: 'fixtures',
-      autoSync: false
+      autoSync: false,
+      renderMath: true
     })
     const s = await loadSettings()
     expect(s).toEqual({
       token: 'ghp_test_dummy',
       owner: 'me',
       repo: 'fixtures',
-      autoSync: false
+      autoSync: false,
+      renderMath: true
     })
   })
 
@@ -52,14 +55,28 @@ describe('settingsStore', () => {
       token: '',
       owner: 'a',
       repo: 'c',
-      autoSync: false
+      autoSync: false,
+      renderMath: false
     })
   })
 
+  it('renderMath 单独持久化：false→true 往返不丢', async () => {
+    await saveSettings({ renderMath: true })
+    expect((await loadSettings()).renderMath).toBe(true)
+    await saveSettings({ renderMath: false })
+    expect((await loadSettings()).renderMath).toBe(false)
+  })
+
   it('isConfigured：owner+repo 非空即视为已配置（公开库可不填令牌）', () => {
-    expect(isConfigured({ token: '', owner: 'me', repo: 'fixtures', autoSync: true })).toBe(true)
-    expect(isConfigured({ token: 'x', owner: '', repo: 'fixtures', autoSync: true })).toBe(false)
-    expect(isConfigured({ token: 'x', owner: 'me', repo: '', autoSync: true })).toBe(false)
+    expect(
+      isConfigured({ token: '', owner: 'me', repo: 'fixtures', autoSync: true, renderMath: false })
+    ).toBe(true)
+    expect(
+      isConfigured({ token: 'x', owner: '', repo: 'fixtures', autoSync: true, renderMath: false })
+    ).toBe(false)
+    expect(
+      isConfigured({ token: 'x', owner: 'me', repo: '', autoSync: true, renderMath: false })
+    ).toBe(false)
     expect(isConfigured(DEFAULT_SETTINGS)).toBe(false)
   })
 })
