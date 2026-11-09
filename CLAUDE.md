@@ -44,11 +44,12 @@ This repository is **public** (GitHub Pages hosting requires it). It must never 
 - 改 DB schema 只在 `src/idb.ts`；改部署路径同时改 `vite.config.ts` 的 `base` 与 manifest `start_url`（当前 `/git-md-pwa/`）。
 - 线上 = GitHub Pages 子路径；发布靠 push `main` → `.github/workflows/pages.yml`。
 
-### 已知工具链坑：typescript 版本（备用方案存档）
+### 已知工具链坑：原生平台二进制包（当前修复 + TS7 备用方案存档）
 
-- `typescript` 钉回 **`~5.9.3`**（纯 JS）。原因：`typescript@^7`（Go 原生）的二进制来自 **20 个可选平台包**（`@typescript/typescript-linux-x64` 等）；而 **Windows 上 `npm install` 重写 lock 时只留本机平台包**（`win32-x64`），GitHub Actions（ubuntu）`npm ci` 严格按 lock 安装 → 拿不到 linux x64 → `tsc` 启动崩。注意 lock 里平台条目曾被 07a/07b 在 Windows 装依赖时从 20 个洗成 1 个，一度让 CI 红（后已改 TS5.9 根治）。
-- **备用（如日后要切回 TS7）**：① `npm i -D typescript@^7.0.2`；② 把 `git show 6cbd49a:package-lock.json` 里 20 个 `node_modules/@typescript/*` 平台包条目合并回 lock；③ **每次在 Windows 改依赖后**跑下面的检查，确认平台条目未再被洗掉（CI 靠它）：
-  `node -e "const l=require('./package-lock.json');const k=Object.keys(l.packages).filter(x=>x.includes('@typescript/'));console.log(k.length,k)"`（期望 20）。
+- **坑**：`typescript@7`（Go 原生）、`rolldown`（Vite 8 的 bundler）、`rollup` 等都用**可选平台二进制包**（`@typescript/typescript-linux-x64`、`@rolldown/binding-linux-x64-gnu`、`@rollup/rollup-linux-x64-gnu`…）。而 **Windows 上 `npm install` 重写 lock 时只留本机平台条目**——07a/07b 装依赖时就把这几家的非 `win32` 条目全洗掉了 → ubuntu 上 `npm ci` 严格按 lock 装 → 启动即「Cannot find native binding」。已两次在实际 CI 触发（rolldown/rollup 在 `vite build`，TS7 在 `tsc`）。
+- **当前修复（根治）**：部署 workflow 用 **`npm install`**（而非 `npm ci`）——它按 CI 平台现场解析并安装平台可选包，不依赖 lock 里是否留有全部平台条目；lock 无需手工维护，Windows 上洗掉也无妨。
+- **`typescript` 另钉回 `~5.9.3`（纯 JS，无平台二进制）**，`tsc` 稳定；rolldown/rollup 无纯 JS 替代，靠上一条的 `npm install` 兜住。
+- **备用（如日后要切回 TS7）**：① `npm i -D typescript@^7.0.2`；② 把 `git show 6cbd49a:package-lock.json` 里 20 个 `node_modules/@typescript/*` 平台包条目合并回 lock；③ 检查命令（期望 20 条）：`node -e "const l=require('./package-lock.json');const k=Object.keys(l.packages).filter(x=>x.includes('@typescript/'));console.log(k.length)"`。改为 `npm install` 后此步骤仅影响「本地/其它环境 `npm ci` 直接可用」，CI 已不依赖。
 
 Research / triage / spec skills read the setup below:
 
