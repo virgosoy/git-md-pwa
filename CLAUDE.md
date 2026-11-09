@@ -44,13 +44,12 @@ This repository is **public** (GitHub Pages hosting requires it). It must never 
 - 改 DB schema 只在 `src/idb.ts`；改部署路径同时改 `vite.config.ts` 的 `base` 与 manifest `start_url`（当前 `/git-md-pwa/`）。
 - 线上 = GitHub Pages 子路径；发布靠 push `main` → `.github/workflows/pages.yml`。
 
-### 已知工具链坑：原生平台二进制包（当前修复 + TS7 备用方案存档）
+### 已知工具链坑：原生平台二进制包（根因 + 守卫）
 
-- **坑**：`rolldown`（Vite 8 的 bundler）、`rollup`、`typescript@7` 用**可选平台二进制包**（`@rolldown/binding-linux-x64-gnu`、`@rollup/rollup-linux-x64-gnu`…）。**Windows 上 `npm install` 重写 lock 只留本机平台条目**（rolldown 15 条→剩 1、rollup 同理）→ ubuntu `npm ci` 严格按 lock 装 → 缺 linux 二进制 → 构建崩（已在 `tsc` 与 `vite build` 各触发一次，经 WSL linux 复现确认）。
-- **根因/已实测**：① 依赖 lock 缺条目时，**连 `npm install` 也不补装平台可选包**（npm/cli#4828），所以临时把 workflow 改成 `npm install` 无效；② 正解是 **lock 必须跨平台**——把 `6cbd49a:package-lock.json` 里的 `@rolldown/binding-*`、`@rollup/rollup-*` 平台条目并入当前 lock（版本与现有 win32 条目一致即可）。
-- **当前修复（根治）**：workflow **回 `npm ci`** + 提交的 lock 已是跨平台；`scripts/verify-lock-platforms.mjs` 在 CI 的 `npm ci` 前跑，**任何原生平台族只要只剩单平台条目就直接红**——以后在 Windows 改依赖把 lock 洗掉时，合入即被拦，而不是 build 才爆炸。
-- **`typescript` 另钉回 `~5.9.3`（纯 JS，无平台二进制）**，`tsc` 稳定。
-- **备用（如日后要切回 TS7）**：① `npm i -D typescript@^7.0.2`；② 把 `git show 6cbd49a:package-lock.json` 里 20 个 `node_modules/@typescript/*` 平台包条目合并回 lock；③ 检查命令（期望 20 条）：`node -e "const l=require('./package-lock.json');const k=Object.keys(l.packages).filter(x=>x.includes('@typescript/'));console.log(k.length)"`。
+- **坑**：`rolldown`（Vite 8）、`rollup`、`lightningcss`、`typescript@7` 都用**可选平台二进制包**（`@rolldown/binding-linux-x64-gnu`、`@rollup/rollup-linux-x64-gnu`、`lightningcss-linux-x64-gnu`、`@typescript/typescript-linux-x64`…）。**Windows 上 `npm install` 重写 lock 只留本机平台条目** → ubuntu `npm ci` 严格按 lock 装 → 缺 linux 二进制 → 构建崩。实际触发三处：`tsc`（TS7）、`vite build`（rolldown）、CSS 压缩（lightningcss），全部经 WSL linux 复现确认是同一根因，**与 typescript 版本无关**。
+- **根因/已实测**：① lock 缺条目时**连 `npm install` 也不补装平台可选包**（npm/cli#4828），临时改 workflow 用 `npm install` 无效；② 正解是 **lock 必须跨平台**——把历史上全量跨平台的 lock（如 `6cbd49a`）里的同族平台条目并回当前 lock（版本一致即可）。
+- **当前修复（根治）**：提交的 lock 已是跨平台（rolldown/rollup/lightningcss/typescript 全平台条目）；**`typescript` 保持 `^7.0.2`**（问题从来不是 TS，勿再降 5.9）；workflow 回 **`npm ci`**，且 `scripts/verify-lock-platforms.mjs` 在 `npm ci` 前跑——**通用守卫按「包名含 OS 令牌」自动识别所有原生平台族，任一族只要只剩单平台（win32-only）就直接红**，不再手列名单。
+- **恢复操作**（若未来有人在 Windows 改依赖又把 lock 洗了）：`node scripts/verify-lock-platforms.mjs` 会在 CI 报出被洗的族；从 `git show <跨平台ref>:package-lock.json` 把同族条目并回即可（历史全量 ref：`6cbd49a`）。
 
 Research / triage / spec skills read the setup below:
 
