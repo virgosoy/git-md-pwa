@@ -46,10 +46,11 @@ This repository is **public** (GitHub Pages hosting requires it). It must never 
 
 ### 已知工具链坑：原生平台二进制包（当前修复 + TS7 备用方案存档）
 
-- **坑**：`typescript@7`（Go 原生）、`rolldown`（Vite 8 的 bundler）、`rollup` 等都用**可选平台二进制包**（`@typescript/typescript-linux-x64`、`@rolldown/binding-linux-x64-gnu`、`@rollup/rollup-linux-x64-gnu`…）。而 **Windows 上 `npm install` 重写 lock 时只留本机平台条目**——07a/07b 装依赖时就把这几家的非 `win32` 条目全洗掉了 → ubuntu 上 `npm ci` 严格按 lock 装 → 启动即「Cannot find native binding」。已两次在实际 CI 触发（rolldown/rollup 在 `vite build`，TS7 在 `tsc`）。
-- **当前修复（根治）**：部署 workflow 用 **`npm install`**（而非 `npm ci`）——它按 CI 平台现场解析并安装平台可选包，不依赖 lock 里是否留有全部平台条目；lock 无需手工维护，Windows 上洗掉也无妨。
-- **`typescript` 另钉回 `~5.9.3`（纯 JS，无平台二进制）**，`tsc` 稳定；rolldown/rollup 无纯 JS 替代，靠上一条的 `npm install` 兜住。
-- **备用（如日后要切回 TS7）**：① `npm i -D typescript@^7.0.2`；② 把 `git show 6cbd49a:package-lock.json` 里 20 个 `node_modules/@typescript/*` 平台包条目合并回 lock；③ 检查命令（期望 20 条）：`node -e "const l=require('./package-lock.json');const k=Object.keys(l.packages).filter(x=>x.includes('@typescript/'));console.log(k.length)"`。改为 `npm install` 后此步骤仅影响「本地/其它环境 `npm ci` 直接可用」，CI 已不依赖。
+- **坑**：`rolldown`（Vite 8 的 bundler）、`rollup`、`typescript@7` 用**可选平台二进制包**（`@rolldown/binding-linux-x64-gnu`、`@rollup/rollup-linux-x64-gnu`…）。**Windows 上 `npm install` 重写 lock 只留本机平台条目**（rolldown 15 条→剩 1、rollup 同理）→ ubuntu `npm ci` 严格按 lock 装 → 缺 linux 二进制 → 构建崩（已在 `tsc` 与 `vite build` 各触发一次，经 WSL linux 复现确认）。
+- **根因/已实测**：① 依赖 lock 缺条目时，**连 `npm install` 也不补装平台可选包**（npm/cli#4828），所以临时把 workflow 改成 `npm install` 无效；② 正解是 **lock 必须跨平台**——把 `6cbd49a:package-lock.json` 里的 `@rolldown/binding-*`、`@rollup/rollup-*` 平台条目并入当前 lock（版本与现有 win32 条目一致即可）。
+- **当前修复（根治）**：workflow **回 `npm ci`** + 提交的 lock 已是跨平台；`scripts/verify-lock-platforms.mjs` 在 CI 的 `npm ci` 前跑，**任何原生平台族只要只剩单平台条目就直接红**——以后在 Windows 改依赖把 lock 洗掉时，合入即被拦，而不是 build 才爆炸。
+- **`typescript` 另钉回 `~5.9.3`（纯 JS，无平台二进制）**，`tsc` 稳定。
+- **备用（如日后要切回 TS7）**：① `npm i -D typescript@^7.0.2`；② 把 `git show 6cbd49a:package-lock.json` 里 20 个 `node_modules/@typescript/*` 平台包条目合并回 lock；③ 检查命令（期望 20 条）：`node -e "const l=require('./package-lock.json');const k=Object.keys(l.packages).filter(x=>x.includes('@typescript/'));console.log(k.length)"`。
 
 Research / triage / spec skills read the setup below:
 
