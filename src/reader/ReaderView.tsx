@@ -8,6 +8,7 @@ import { useLayoutEffect, useRef } from 'preact/hooks'
 import { renderNote, mayHaveMath, mayHaveMermaid, createMd } from './render'
 import type { MathEngine } from './render'
 import { wireMermaid } from './mermaid'
+import { assignHeadingIds, headingScrollTarget, currentHeadingIndex, type TocHeading } from './toc'
 import { classifyLink, resolveNotePath } from './links'
 import { wireAssets } from '../assets/wire'
 import type { AssetLoader } from '../assets/wire'
@@ -40,7 +41,89 @@ const baseNoteCss = `
 .md-body .md-mermaid { margin: 1rem 0; overflow-x: auto; }
 .md-body .md-mermaid svg { max-width: 100%; height: auto; }
 .md-body .md-mermaid-error { color: #cc0000; font-size: 0.85em; margin: 0.25rem 0 0; }
+/* 08：单篇 TOC 浮动按钮 + 面板（shadow 内作用域；fixed 视口定位，.reader 无 transform 祖先） */
+.reader-toc { position: fixed; right: 1rem; bottom: 4.75rem; z-index: 20; }
+.reader-toc__toggle {
+  appearance: none; border: 1px solid #3f3f46; background: #27272a; color: #e4e4e7;
+  border-radius: 999px; padding: 0.45rem 0.9rem; font-size: 0.85rem; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.reader-toc__toggle.is-active, .reader-toc__toggle:active { background: #3f83f8; border-color: #3f83f8; color: #fff; }
+.reader-toc__panel {
+  display: none; position: absolute; right: 0; bottom: calc(100% + 0.5rem); width: 15rem;
+  max-height: 55vh; overflow-y: auto; background: #1f1f23; border: 1px solid #3f3f46;
+  border-radius: 0.5rem; padding: 0.5rem;
+}
+.reader-toc__panel.is-open { display: block; }
+.reader-toc__item {
+  display: block; width: 100%; text-align: left; border: 0; background: none; color: #d4d4d8;
+  font-size: 0.85rem; line-height: 1.4; padding: 0.25rem 0; cursor: pointer;
+}
+.reader-toc__item.is-current { color: #3f83f8; font-weight: 600; }
 `
+
+/**
+ * 08 · 装配浮动 TOC（按钮 + 层级面板）到 shadow（宿主内）。
+ * 点击条目 → host.scrollTop 定位到标题并收起；滚动 → 高亮当前章节。
+ * 返回用于卸载（移除 scroll 监听）的函数；chrome DOM 随 shadow 内 HTML 重设自然清除。
+ */
+function attachTocChrome(
+  shadowEl: ShadowRoot,
+  hostEl: HTMLElement,
+  headings: TocHeading[]
+): () => void {
+  const nav = document.createElement('nav')
+  nav.className = 'reader-toc__panel'
+  const items: HTMLButtonElement[] = []
+  for (const h of headings) {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'reader-toc__item'
+    btn.style.paddingLeft = `${0.5 + (h.level - 1) * 0.9}rem` // 层级缩进
+    btn.textContent = h.text
+    btn.addEventListener('click', () => {
+      hostEl.scrollTop = headingScrollTarget(hostEl, h.el)
+      collapse()
+    })
+    nav.appendChild(btn)
+    items.push(btn)
+  }
+  const wrap = document.createElement('div')
+  wrap.className = 'reader-toc'
+  const toggle = document.createElement('button')
+  toggle.type = 'button'
+  toggle.className = 'reader-toc__toggle'
+  toggle.textContent = '目录'
+  toggle.addEventListener('click', () => {
+    const open = nav.classList.toggle('is-open')
+    toggle.classList.toggle('is-active', open)
+  })
+  wrap.appendChild(toggle)
+  wrap.appendChild(nav)
+  shadowEl.appendChild(wrap)
+
+  function collapse(): void {
+    nav.classList.remove('is-open')
+    toggle.classList.remove('is-active')
+  }
+
+  // 滚动高亮：实时按各标题目标位置定位当前章节（票 08 决策：rAF 节流，避免每帧几何重排）
+  let raf = 0
+  const onScroll = (): void => {
+    if (raf) return
+    raf = requestAnimationFrame(() => {
+      raf = 0
+      const targets = headings.map((h) => headingScrollTarget(hostEl, h.el))
+      const idx = currentHeadingIndex(targets, hostEl.scrollTop)
+      items.forEach((it, i) => it.classList.toggle('is-current', i === idx))
+    })
+  }
+  hostEl.addEventListener('scroll', onScroll)
+  return () => {
+    hostEl.removeEventListener('scroll', onScroll)
+    if (raf) cancelAnimationFrame(raf)
+  }
+}
 
 export interface ReaderViewProps {
   path: string
@@ -115,6 +198,7 @@ export function ReaderView({
     const mdBody = shadowEl.querySelector('.md-body') as HTMLDivElement
 
     let alive = true
+    let detachToc = (): void => {}
     async function fill(): Promise<void> {
       // 07a：开公式才动态 import math（引擎 + KaTeX CSS），失败则 engine 保持空转无公式。
       let engine: MathEngine | undefined
@@ -146,12 +230,22 @@ export function ReaderView({
       if (renderMermaid && mayHaveMermaid(content)) {
         void wireMermaid(mdBody, { alive: () => alive && pathRef.current === path })
       }
+      // 08：单篇 TOC（默认开；≥2 个标题才装配 chrome）。id 赋值对正文所有标题生效，
+      // 让 `#slug` 内链可直达；pre/code 内标题被 assignHeadingIds 跳过。
+      // 无条件 detach：同路径刷新（refreshToken/content）后标题数跌到 <2 也要卸掉
+      // 旧 scroll 监听，否则会一直指向已断开的节点。
+      detachToc()
+      const toc = assignHeadingIds(mdBody)
+      if (toc.length >= 2) {
+        detachToc = attachTocChrome(shadowEl, hostEl, toc)
+      }
       // 只在切换新笔记时还原阅读位置；同路径内容原地更新不清滚动（防中途丢位置）
       if (isNewNote) hostEl.scrollTop = initialScrollTop
     }
     void fill()
     return () => {
       alive = false
+      detachToc()
     }
   }, [path, content, initialScrollTop, assetLoader, refreshToken, renderMath, renderMermaid])
 

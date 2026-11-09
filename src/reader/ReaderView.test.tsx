@@ -275,3 +275,113 @@ describe('ReaderView renderMermaid（07b）', () => {
     expect(root.querySelector('[data-mermaid]')?.textContent).toContain('[invalid')
   })
 })
+
+describe('ReaderView 单篇 TOC（08）', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  const NOTE = '# 一\n\n## 二\n\n## 三\n\n正文…\n\n# 尾\n\n## 末'
+  const NOTE3 = '# 一\n\n## 二\n\n## 三'
+
+  /**
+   * jsdom 无布局：给 host 与 `h1,h2` 打 getBoundingClientRect 桩，使
+   * headingScrollTarget 对内容偏移 offsets 恒为目标 `offset-12`；scrollTo 更新
+   * 桩读到的高度并派发 scroll 事件（配合 rAF 节流，调用方需 await 一帧）。
+   */
+  function stubScrollGeometry(
+    container: HTMLElement,
+    offsets: number[]
+  ): { host: HTMLElement; scrollTo: (s: number) => void } {
+    const host = container.querySelector('.reader') as HTMLElement
+    const root = (host as HTMLElement & { shadowRoot: ShadowRoot }).shadowRoot
+    const scrollVar = { v: 0 }
+    host.getBoundingClientRect = () =>
+      ({ top: 0, bottom: 500, height: 500, left: 0, right: 0, width: 300, x: 0, y: 0 } as DOMRect)
+    ;[...root.querySelectorAll('h1, h2')].forEach((el, i) => {
+      ;(el as HTMLElement).getBoundingClientRect = () =>
+        ({ top: offsets[i] - scrollVar.v } as DOMRect)
+    })
+    return {
+      host,
+      scrollTo: (s: number): void => {
+        scrollVar.v = s
+        host.scrollTop = s
+        host.dispatchEvent(new Event('scroll'))
+      }
+    }
+  }
+
+  it('≥2 标题 → 右下「目录」按钮；1 个标题 → 无按钮', async () => {
+    const c = mount(<ReaderView path="a.md" content={NOTE} onOpenNote={() => {}} />)
+    await flush()
+    const root = shadowOf(c)
+    expect(root.querySelector('.reader-toc__toggle')?.textContent).toBe('目录')
+
+    document.body.innerHTML = ''
+    const c1 = mount(<ReaderView path="b.md" content="# 只有一\n\n正文" onOpenNote={() => {}} />)
+    await flush()
+    expect(shadowOf(c1).querySelector('.reader-toc')).toBeNull()
+  })
+
+  it('面板：H1–H6 按层缩进、按文档序，标题被赋唯一 id', async () => {
+    const c = mount(<ReaderView path="a.md" content={NOTE} onOpenNote={() => {}} />)
+    await flush()
+    const root = shadowOf(c)
+    const toggle = root.querySelector('.reader-toc__toggle') as HTMLElement
+    toggle.click()
+    const panel = root.querySelector('.reader-toc__panel') as HTMLElement
+    expect(panel.classList.contains('is-open')).toBe(true)
+
+    const items = [...root.querySelectorAll('.reader-toc__item')].map((it) => ({
+      text: it.textContent,
+      pad: (it as HTMLElement).style.paddingLeft
+    }))
+    expect(items).toEqual([
+      { text: '一', pad: '0.5rem' },
+      { text: '二', pad: '1.4rem' },
+      { text: '三', pad: '1.4rem' },
+      { text: '尾', pad: '0.5rem' },
+      { text: '末', pad: '1.4rem' }
+    ])
+    // 标题元素带唯一 id（#slug 内链直达副产物）
+    const h1 = root.querySelector('h1') as HTMLElement
+    const h1b = root.querySelectorAll('h1')[1] as HTMLElement
+    expect(h1.getAttribute('id')).toBe('一')
+    expect(h1b.getAttribute('id')).toBe('尾')
+  })
+
+  it('点条目 → 滚动定位到目标并收起面板', async () => {
+    const c = mount(<ReaderView path="a.md" content={NOTE3} onOpenNote={() => {}} />)
+    await flush()
+    // 内容偏移 62/212/412 → 目标 scrollTop 50/200/400（offset=12）
+    const { host } = stubScrollGeometry(c, [62, 212, 412])
+    const root = shadowOf(c)
+    const toggle = root.querySelector('.reader-toc__toggle') as HTMLElement
+    toggle.click()
+    const items = [...root.querySelectorAll('.reader-toc__item')] as HTMLElement[]
+    items[1].click() // 「二」目标 scrollTop 200
+    expect(host.scrollTop).toBe(200)
+    const panel = root.querySelector('.reader-toc__panel') as HTMLElement
+    expect(panel.classList.contains('is-open')).toBe(false) // 点击后收起
+  })
+
+  it('滚动：当前章节高亮随位置切换（rAF 节流后一帧生效）', async () => {
+    const c = mount(<ReaderView path="a.md" content={NOTE3} onOpenNote={() => {}} />)
+    await flush()
+    const { scrollTo } = stubScrollGeometry(c, [62, 212, 412])
+    const items = [...shadowOf(c).querySelectorAll('.reader-toc__item')] as HTMLElement[]
+    const frame = (): Promise<void> =>
+      new Promise<void>((r) => requestAnimationFrame(() => r()))
+
+    scrollTo(60) // 越过「一」(50) 未到「二」(200)
+    await frame()
+    expect(items[0].classList.contains('is-current')).toBe(true)
+    expect(items[1].classList.contains('is-current')).toBe(false)
+
+    scrollTo(205) // 越过「二」
+    await frame()
+    expect(items[1].classList.contains('is-current')).toBe(true)
+    expect(items[0].classList.contains('is-current')).toBe(false)
+  })
+})
