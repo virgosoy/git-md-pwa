@@ -19,6 +19,8 @@ export interface AppSettings {
   renderMath: boolean
   /** 渲染 Mermaid 图表，默认关；关/错=围栏当普通代码块 */
   renderMermaid: boolean
+  /** 单篇 TOC 固定偏好：开=点目录条目后面板保持展开；全局存储，默认关 */
+  tocPinned: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -27,7 +29,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   repo: '',
   autoSync: true,
   renderMath: false,
-  renderMermaid: false
+  renderMermaid: false,
+  tocPinned: false
 }
 
 const KEY = 'app'

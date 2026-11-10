@@ -60,20 +60,56 @@ const baseNoteCss = `
   font-size: 0.85rem; line-height: 1.4; padding: 0.25rem 0; cursor: pointer;
 }
 .reader-toc__item.is-current { color: #3f83f8; font-weight: 600; }
+.reader-toc__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem; }
+.reader-toc__title { font-size: 0.8rem; color: #a1a1aa; }
+.reader-toc__pin {
+  appearance: none; border: 1px solid #3f3f46; background: none; color: #a1a1aa;
+  border-radius: 999px; font-size: 0.75rem; padding: 0.1rem 0.55rem; cursor: pointer;
+}
+.reader-toc__pin.is-active { color: #fff; background: #3f83f8; border-color: #3f83f8; }
 `
 
 /**
  * 08 · 装配浮动 TOC（按钮 + 层级面板）到 shadow（宿主内）。
- * 点击条目 → host.scrollTop 定位到标题并收起；滚动 → 高亮当前章节。
+ * 点击条目 → host.scrollTop 定位到标题；固定开关控制点条目后是否收起
+ *（固定=保持展开，默认不固定=收起）；滚动 → 高亮当前章节。
  * 返回用于卸载（移除 scroll 监听）的函数；chrome DOM 随 shadow 内 HTML 重设自然清除。
  */
 function attachTocChrome(
   shadowEl: ShadowRoot,
   hostEl: HTMLElement,
-  headings: TocHeading[]
+  headings: TocHeading[],
+  initialPinned: boolean,
+  onPinChange: (next: boolean) => void
 ): () => void {
+  let pinned = initialPinned
+
   const nav = document.createElement('nav')
   nav.className = 'reader-toc__panel'
+  // 面板头部：标题 + 固定开关（固定状态随设置存储，全局偏好）
+  const head = document.createElement('div')
+  head.className = 'reader-toc__head'
+  const headTitle = document.createElement('span')
+  headTitle.className = 'reader-toc__title'
+  headTitle.textContent = '目录'
+  const pin = document.createElement('button')
+  pin.type = 'button'
+  pin.className = 'reader-toc__pin'
+  pin.textContent = '固定'
+  const syncPin = (): void => {
+    pin.classList.toggle('is-active', pinned)
+    pin.setAttribute('aria-pressed', String(pinned))
+  }
+  syncPin()
+  pin.addEventListener('click', () => {
+    pinned = !pinned
+    syncPin()
+    onPinChange(pinned)
+  })
+  head.appendChild(headTitle)
+  head.appendChild(pin)
+  nav.appendChild(head)
+
   const items: HTMLButtonElement[] = []
   for (const h of headings) {
     const btn = document.createElement('button')
@@ -83,7 +119,7 @@ function attachTocChrome(
     btn.textContent = h.text
     btn.addEventListener('click', () => {
       hostEl.scrollTop = headingScrollTarget(hostEl, h.el)
-      collapse()
+      if (!pinned) collapse()
     })
     nav.appendChild(btn)
     items.push(btn)
@@ -138,6 +174,10 @@ export interface ReaderViewProps {
   renderMath?: boolean
   /** 渲染 Mermaid 图表（07b）；关/无围栏→```mermaid 当普通代码块 */
   renderMermaid?: boolean
+  /** 单篇 TOC 固定偏好（08 增强）：true=点目录条目后面板保持展开；随设置全局存储 */
+  tocPinned?: boolean
+  /** 固定开关变化回调（由 App 持久化到 settings）；UI 即时生效 */
+  onTocPinChange?: (next: boolean) => void
   onOpenNote: (targetPath: string) => void
   onScroll?: (scrollTop: number) => void
 }
@@ -150,6 +190,8 @@ export function ReaderView({
   refreshToken = 0,
   renderMath = false,
   renderMermaid = false,
+  tocPinned = false,
+  onTocPinChange,
   onOpenNote,
   onScroll
 }: ReaderViewProps) {
@@ -158,8 +200,12 @@ export function ReaderView({
   const pathRef = useRef(path)
   const openRef = useRef(onOpenNote)
   const prevPathRef = useRef<string | null>(null)
+  const tocPinnedRef = useRef(tocPinned)
+  const onTocPinChangeRef = useRef(onTocPinChange)
   pathRef.current = path
   openRef.current = onOpenNote
+  tocPinnedRef.current = tocPinned
+  onTocPinChangeRef.current = onTocPinChange
 
   // useLayoutEffect：装配 Shadow DOM 是挂载时就要完成的 DOM 操作，不同步会闪空。
   useLayoutEffect(() => {
@@ -237,7 +283,13 @@ export function ReaderView({
       detachToc()
       const toc = assignHeadingIds(mdBody)
       if (toc.length >= 2) {
-        detachToc = attachTocChrome(shadowEl, hostEl, toc)
+        detachToc = attachTocChrome(
+          shadowEl,
+          hostEl,
+          toc,
+          tocPinnedRef.current,
+          (next) => onTocPinChangeRef.current?.(next)
+        )
       }
       // 只在切换新笔记时还原阅读位置；同路径内容原地更新不清滚动（防中途丢位置）
       if (isNewNote) hostEl.scrollTop = initialScrollTop

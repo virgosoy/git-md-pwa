@@ -384,4 +384,56 @@ describe('ReaderView 单篇 TOC（08）', () => {
     expect(items[1].classList.contains('is-current')).toBe(true)
     expect(items[0].classList.contains('is-current')).toBe(false)
   })
+
+  it('固定（tocPinned=true）：点条目只滚动，面板保持展开', async () => {
+    const c = mount(
+      <ReaderView path="a.md" content={NOTE3} tocPinned onOpenNote={() => {}} />
+    )
+    await flush()
+    const { host } = stubScrollGeometry(c, [62, 212, 412])
+    const root = shadowOf(c)
+    const pin = root.querySelector('.reader-toc__pin') as HTMLElement
+    expect(pin.classList.contains('is-active')).toBe(true) // 初始即固定
+
+    ;(root.querySelector('.reader-toc__toggle') as HTMLElement).click()
+    const panel = root.querySelector('.reader-toc__panel') as HTMLElement
+    expect(panel.classList.contains('is-open')).toBe(true)
+    const items = [...root.querySelectorAll('.reader-toc__item')] as HTMLElement[]
+    items[1].click() // 「二」目标 200
+    expect(host.scrollTop).toBe(200)
+    expect(panel.classList.contains('is-open')).toBe(true) // 固定 → 不收起
+  })
+
+  it('固定按钮：点击即时回调 + UI 态，钉住后点条目不收起、再点可取消', async () => {
+    const pinCalls: boolean[] = []
+    const c = mount(
+      <ReaderView
+        path="a.md"
+        content={NOTE3}
+        onTocPinChange={(n) => pinCalls.push(n)}
+        onOpenNote={() => {}}
+      />
+    )
+    await flush()
+    const { host } = stubScrollGeometry(c, [62, 212, 412])
+    const root = shadowOf(c)
+    const toggle = root.querySelector('.reader-toc__toggle') as HTMLElement
+    const pin = root.querySelector('.reader-toc__pin') as HTMLElement
+    const panel = root.querySelector('.reader-toc__panel') as HTMLElement
+    toggle.click() // 打开
+    expect(pin.classList.contains('is-active')).toBe(false)
+
+    pin.click() // 固定
+    expect(pinCalls).toEqual([true])
+    expect(pin.classList.contains('is-active')).toBe(true)
+
+    const items = [...root.querySelectorAll('.reader-toc__item')] as HTMLElement[]
+    items[0].click()
+    expect(host.scrollTop).toBe(50)
+    expect(panel.classList.contains('is-open')).toBe(true) // 固定 → 不收起
+
+    pin.click() // 取消固定
+    expect(pinCalls).toEqual([true, false])
+    expect(pin.classList.contains('is-active')).toBe(false)
+  })
 })

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { SettingsView } from './settings/SettingsView'
 import type { AppSettings } from './settings/store'
-import { isConfigured, loadSettings } from './settings/store'
+import { isConfigured, loadSettings, saveSettings } from './settings/store'
 import { getFile, loadFiles } from './mirror/store'
 import type { StoredFile } from './mirror/store'
 import { NotesList } from './notes/NotesList'
@@ -139,6 +139,13 @@ export function App() {
     }
   }
 
+  async function handleTocPinChange(pinned: boolean): Promise<void> {
+    // TOC 固定偏好随设置持久化（全局，跨笔记/会话）
+    const s = await saveSettings({ tocPinned: pinned })
+    setSettings(s)
+    settingsRef.current = s
+  }
+
   async function refreshRecent(): Promise<void> {
     setRecent(await listRecent(20))
   }
@@ -207,6 +214,8 @@ export function App() {
             refreshToken={readerTick}
             renderMath={settings?.renderMath ?? false}
             renderMermaid={settings?.renderMermaid ?? false}
+            tocPinned={settings?.tocPinned ?? false}
+            onTocPinChange={(next) => void handleTocPinChange(next)}
             onOpenNote={(p) => void openNote(p)}
             onScroll={handleScroll}
           />

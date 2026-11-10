@@ -15,22 +15,24 @@ describe('settingsStore', () => {
     await clearSettings()
   })
 
-  it('默认 autoSync 为开、renderMath/renderMermaid 为关，其余字段为空', async () => {
+  it('默认 autoSync 为开、renderMath/renderMermaid/tocPinned 为关，其余字段为空', async () => {
     const s = await loadSettings()
     expect(s).toEqual(DEFAULT_SETTINGS)
     expect(s.autoSync).toBe(true)
     expect(s.renderMath).toBe(false)
     expect(s.renderMermaid).toBe(false)
+    expect(s.tocPinned).toBe(false)
   })
 
-  it('保存后重新加载，往返保留 token/owner/repo/autoSync/renderMath/renderMermaid', async () => {
+  it('保存后重新加载，往返保留 token/owner/repo/autoSync/renderMath/renderMermaid/tocPinned', async () => {
     await saveSettings({
       token: 'ghp_test_dummy',
       owner: 'me',
       repo: 'fixtures',
       autoSync: false,
       renderMath: true,
-      renderMermaid: true
+      renderMermaid: true,
+      tocPinned: true
     })
     const s = await loadSettings()
     expect(s).toEqual({
@@ -39,7 +41,8 @@ describe('settingsStore', () => {
       repo: 'fixtures',
       autoSync: false,
       renderMath: true,
-      renderMermaid: true
+      renderMermaid: true,
+      tocPinned: true
     })
   })
 
@@ -60,7 +63,8 @@ describe('settingsStore', () => {
       repo: 'c',
       autoSync: false,
       renderMath: false,
-      renderMermaid: false
+      renderMermaid: false,
+      tocPinned: false
     })
   })
 
@@ -78,6 +82,13 @@ describe('settingsStore', () => {
     expect((await loadSettings()).renderMermaid).toBe(false)
   })
 
+  it('tocPinned 单独持久化：false→true 往返不丢', async () => {
+    await saveSettings({ tocPinned: true })
+    expect((await loadSettings()).tocPinned).toBe(true)
+    await saveSettings({ tocPinned: false })
+    expect((await loadSettings()).tocPinned).toBe(false)
+  })
+
   it('isConfigured：owner+repo 非空即视为已配置（公开库可不填令牌）', () => {
     expect(
       isConfigured({
@@ -86,7 +97,8 @@ describe('settingsStore', () => {
         repo: 'fixtures',
         autoSync: true,
         renderMath: false,
-        renderMermaid: false
+        renderMermaid: false,
+        tocPinned: false
       })
     ).toBe(true)
     expect(
@@ -96,7 +108,8 @@ describe('settingsStore', () => {
         repo: 'fixtures',
         autoSync: true,
         renderMath: false,
-        renderMermaid: false
+        renderMermaid: false,
+        tocPinned: false
       })
     ).toBe(false)
     expect(
@@ -106,7 +119,8 @@ describe('settingsStore', () => {
         repo: '',
         autoSync: true,
         renderMath: false,
-        renderMermaid: false
+        renderMermaid: false,
+        tocPinned: false
       })
     ).toBe(false)
     expect(isConfigured(DEFAULT_SETTINGS)).toBe(false)
