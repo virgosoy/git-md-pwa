@@ -50,6 +50,11 @@ This repository is **public** (GitHub Pages hosting requires it). It must never 
 - **根因/已实测**：① lock 缺条目时**连 `npm install` 也不补装平台可选包**（npm/cli#4828），临时改 workflow 用 `npm install` 无效；② 正解是 **lock 必须跨平台**——把历史上全量跨平台的 lock（如 `6cbd49a`）里的同族平台条目并回当前 lock（版本一致即可）。
 - **当前修复（根治）**：提交的 lock 已是跨平台（rolldown/rollup/lightningcss/typescript 全平台条目）；**`typescript` 保持 `^7.0.2`**（问题从来不是 TS，勿再降 5.9）；workflow 回 **`npm ci`**，且 `scripts/verify-lock-platforms.mjs` 在 `npm ci` 前跑——**通用守卫按「包名含 OS 令牌」自动识别所有原生平台族，任一族只要只剩单平台（win32-only）就直接红**，不再手列名单。
 - **恢复操作**（若未来有人在 Windows 改依赖又把 lock 洗了）：`node scripts/verify-lock-platforms.mjs` 会在 CI 报出被洗的族；从 `git show <跨平台ref>:package-lock.json` 把同族条目并回即可（历史全量 ref：`6cbd49a`）。
+- **复现 ubuntu CI（WSL 原生 linux node）**：平台类构建错（native binding / lightningcss / …）不必等 push，本机本地复现。一次备好原生 node（linux 平台，勿用 WSL interop 的 win32 npm）：
+  `cd $HOME && VER=v22.22.1 && curl -fsSL -o node.tar.xz https://nodejs.org/dist/$VER/node-$VER-linux-x64.tar.xz && tar -xJf node.tar.xz && mv node-$VER-linux-x64 node-linux`
+  逐次复现/复验（D:\… 在 WSL 是 /mnt/d/…）：
+  `export PATH=$HOME/node-linux/bin:$PATH; cd $HOME && rm -rf ci-repro && git clone <仓库Windows路径> ci-repro && cd ci-repro && npm ci && npm run build`
+  判据：`npm run build` 失败=该提交复现；绿=已修。注意 **WSL 的 /tmp 会话间会被清**，toolchain/临时文件放 $HOME 才持久。
 
 Research / triage / spec skills read the setup below:
 
