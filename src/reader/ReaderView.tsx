@@ -4,7 +4,7 @@
 // 点击由宿主委托：md 内链 → onOpenNote(解析路径)；外链 → 系统浏览器；
 // 锚点保留默认滚动；资源留给票 05。
 
-import { useLayoutEffect, useRef } from 'preact/hooks'
+import { useLayoutEffect, useRef, useState } from 'preact/hooks'
 import { renderNote, mayHaveMath, mayHaveMermaid, createMd } from './render'
 import type { MathEngine } from './render'
 import { wireMermaid } from './mermaid'
@@ -12,6 +12,7 @@ import { assignHeadingIds, headingScrollTarget, currentHeadingIndex, type TocHea
 import { classifyLink, resolveNotePath } from './links'
 import { wireAssets } from '../assets/wire'
 import type { AssetLoader } from '../assets/wire'
+import { applyFind, setCurrentMark, clearMarks } from './find'
 import highlightCss from 'highlight.js/styles/github-dark.css?raw'
 
 // 注入 shadow 的笔记基础排版（浏览器 UA 样式在 shadow 里很简陋）
@@ -67,6 +68,16 @@ const baseNoteCss = `
   border-radius: 999px; font-size: 0.75rem; padding: 0.1rem 0.55rem; cursor: pointer;
 }
 .reader-toc__pin.is-active { color: #fff; background: #3f83f8; border-color: #3f83f8; }
+/* 09：单篇查找高亮（mark 在 shadow 内；配色随 :root token，跨 shadow 边界继承） */
+.md-body mark.find-hit {
+  background: var(--find-hit, rgba(63, 131, 248, 0.35));
+  color: inherit;
+  border-radius: 2px;
+}
+.md-body mark.find-hit.is-current {
+  background: var(--find-hit-current, #3f83f8);
+  color: #fff;
+}
 `
 
 /**
@@ -178,6 +189,9 @@ export interface ReaderViewProps {
   tocPinned?: boolean
   /** 固定开关变化回调（由 App 持久化到 settings）；UI 即时生效 */
   onTocPinChange?: (next: boolean) => void
+  /** 09 单篇查找：find 打开态由 App 顶栏🔍控制（开/关两向），本组件关（✕/Esc）时调 onFindClose */
+  findOpen?: boolean
+  onFindClose?: () => void
   onOpenNote: (targetPath: string) => void
   onScroll?: (scrollTop: number) => void
 }
@@ -192,6 +206,8 @@ export function ReaderView({
   renderMermaid = false,
   tocPinned = false,
   onTocPinChange,
+  findOpen = false,
+  onFindClose,
   onOpenNote,
   onScroll
 }: ReaderViewProps) {
@@ -206,6 +222,84 @@ export function ReaderView({
   openRef.current = onOpenNote
   tocPinnedRef.current = tocPinned
   onTocPinChangeRef.current = onTocPinChange
+  // 09 查找：query/count/current 放 state；同步 refs 供异步 fill() 重建后重放
+  const [query, setQuery] = useState('')
+  const [count, setCount] = useState(0)
+  const [current, setCurrent] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const findStartScrollRef = useRef<number | null>(null)
+  const findOpenRef = useRef(findOpen)
+  const queryRef = useRef('')
+  const currentRef = useRef(0)
+  findOpenRef.current = findOpen
+  queryRef.current = query
+  currentRef.current = current
+
+  function mdBodyEl(): HTMLDivElement | null {
+    return rootRef.current?.querySelector('.md-body') ?? null
+  }
+
+  /** 把第 index 个命中滚到 host 顶下（复用 TOC 的跨 shadow 几何差，offset 12）。 */
+  function scrollToMark(index: number): void {
+    const host = hostRef.current
+    const body = mdBodyEl()
+    if (!host || !body) return
+    const mark = body.querySelectorAll('mark[data-find]')[index]
+    if (!mark) return
+    host.scrollTop = headingScrollTarget(host, mark)
+  }
+
+  function runFind(next: string): void {
+    const body = mdBodyEl()
+    setQuery(next)
+    if (!body) return
+    const n = applyFind(body, next)
+    setCount(n)
+    setCurrent(0)
+    if (n > 0) scrollToMark(0)
+  }
+
+  function step(dir: 1 | -1): void {
+    const body = mdBodyEl()
+    if (!body || count === 0) return
+    const next = (current + dir + count) % count // 循环
+    setCurrent(next)
+    setCurrentMark(body, next)
+    scrollToMark(next)
+  }
+
+  /** fill() 重建 shadow（全下/内容刷新）后按当前 query 重放高亮并恢复 current。 */
+  function reapplyFind(): void {
+    const body = mdBodyEl()
+    if (!body) return
+    if (!findOpenRef.current || !queryRef.current) {
+      clearMarks(body)
+      return
+    }
+    const n = applyFind(body, queryRef.current)
+    const idx = Math.min(currentRef.current, Math.max(0, n - 1))
+    setCurrentMark(body, idx)
+    setCount(n)
+    setCurrent(idx)
+  }
+
+  // 09 位置保护（Q4）：开查找记录 pre-find scrollTop；关查找还原 + 清 searching 残态。
+  useLayoutEffect(() => {
+    const host = hostRef.current
+    if (findOpen) {
+      findStartScrollRef.current = host?.scrollTop ?? null
+      inputRef.current?.focus()
+    } else {
+      const restore = findStartScrollRef.current
+      findStartScrollRef.current = null
+      if (host && restore != null) host.scrollTop = restore
+      setQuery('')
+      setCount(0)
+      setCurrent(0)
+      const body = mdBodyEl()
+      if (body) clearMarks(body)
+    }
+  }, [findOpen])
 
   // useLayoutEffect：装配 Shadow DOM 是挂载时就要完成的 DOM 操作，不同步会闪空。
   useLayoutEffect(() => {
@@ -293,6 +387,8 @@ export function ReaderView({
       }
       // 只在切换新笔记时还原阅读位置；同路径内容原地更新不清滚动（防中途丢位置）
       if (isNewNote) hostEl.scrollTop = initialScrollTop
+      // 09：shadow 重建后按当前 query 重放高亮（find 状态下 全下/刷新 不丢查找）
+      reapplyFind()
     }
     void fill()
     return () => {
@@ -302,12 +398,62 @@ export function ReaderView({
   }, [path, content, initialScrollTop, assetLoader, refreshToken, renderMath, renderMermaid])
 
   return (
-    <div
-      class="reader"
-      ref={hostRef}
-      onScroll={
-        onScroll ? (e) => onScroll((e.currentTarget as HTMLElement).scrollTop) : undefined
-      }
-    ></div>
+    <>
+      {findOpen && (
+        <div class="find-bar" role="search">
+          <input
+            ref={inputRef}
+            class="find-input"
+            type="search"
+            placeholder="在笔记内查找"
+            value={query}
+            onInput={(e) => runFind((e.target as HTMLInputElement).value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                step(e.shiftKey ? -1 : 1)
+              } else if (e.key === 'Escape') {
+                e.preventDefault()
+                onFindClose?.()
+              }
+            }}
+          />
+          <span class="find-count" aria-live="polite">
+            {count > 0 ? `${current + 1}/${count}` : query ? '无结果' : ''}
+          </span>
+          <button
+            class="find-btn"
+            type="button"
+            disabled={count === 0}
+            aria-label="上一个"
+            onClick={() => step(-1)}
+          >
+            ↑
+          </button>
+          <button
+            class="find-btn"
+            type="button"
+            disabled={count === 0}
+            aria-label="下一个"
+            onClick={() => step(1)}
+          >
+            ↓
+          </button>
+          <button class="find-btn" type="button" aria-label="关闭查找" onClick={() => onFindClose?.()}>
+            ✕
+          </button>
+        </div>
+      )}
+      <div
+        class="reader"
+        ref={hostRef}
+        onScroll={
+          // 09：查找期间不把滚动冒泡给 App 的防抖保存（Q4：阅读位置不被临时查找污染）
+          onScroll && !findOpen
+            ? (e) => onScroll((e.currentTarget as HTMLElement).scrollTop)
+            : undefined
+        }
+      ></div>
+    </>
   )
 }

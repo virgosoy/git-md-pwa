@@ -5,6 +5,9 @@
   --muted: #a1a1aa;
   --accent: #3f83f8;
   --surface: #27272a;
+  /* 09 单篇查找：命中高亮 / 当前命中（CSS 变量跨 shadow 边界继承到 baseNoteCss） */
+  --find-hit: rgba(63, 131, 248, 0.35);
+  --find-hit-current: #3f83f8;
 }
 
 * {
@@ -168,10 +171,14 @@ body {
 /* 阅读器 */
 .app__main--flush {
   padding: 0;
+  /* 09：查找条占一行、.reader 占剩余高度（bar 显隐不破坏 .reader 作为唯一滚动容器） */
+  display: flex;
+  flex-direction: column;
 }
 
 .reader {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -258,6 +265,58 @@ body {
 .search-input:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+/* 09 单篇查找条（light DOM，位于读器顶、正文上，随顶栏下滑出） */
+.find-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 1rem;
+  background: var(--surface);
+  border-bottom: 1px solid #3f3f46;
+}
+
+.find-input {
+  flex: 1;
+  min-width: 0;
+  appearance: none;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid #3f3f46;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+}
+
+.find-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.find-count {
+  font-size: 0.8rem;
+  color: var(--muted);
+  min-width: 2.4rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.find-btn {
+  appearance: none;
+  border: 1px solid #3f3f46;
+  background: var(--bg);
+  color: var(--fg);
+  border-radius: 0.4rem;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.find-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .search-item {

@@ -437,3 +437,193 @@ describe('ReaderView 单篇 TOC（08）', () => {
     expect(pin.classList.contains('is-active')).toBe(false)
   })
 })
+
+describe('ReaderView 单篇查找（09）', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+    vi.unstubAllGlobals()
+  })
+
+  const NOTE = '# T\n\n正文 快速 定位。\n\n再次 快速吧。'
+
+  function type(c: HTMLElement, value: string): void {
+    const input = c.querySelector('.find-input') as HTMLInputElement
+    input.value = value
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+
+  function marks(c: HTMLElement): HTMLElement[] {
+    return [...shadowOf(c).querySelectorAll('mark[data-find]')] as HTMLElement[]
+  }
+
+  function countText(c: HTMLElement): string | null | undefined {
+    return c.querySelector('.find-count')?.textContent
+  }
+
+  function pressKey(c: HTMLElement, key: string, shiftKey = false): void {
+    const input = c.querySelector('.find-input') as HTMLInputElement
+    input.dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey, bubbles: true }))
+  }
+
+  it('输入片段 → shadow 内高亮全部命中、计数 1/n、首个为当前', async () => {
+    const c = mount(
+      <ReaderView path="a.md" content={NOTE} findOpen onFindClose={() => {}} onOpenNote={() => {}} />
+    )
+    await flush()
+    type(c, '快速')
+    await flush()
+
+    const ms = marks(c)
+    expect(ms.length).toBe(2)
+    expect(ms.map((m) => m.textContent)).toEqual(['快速', '快速'])
+    expect(ms[0].classList.contains('is-current')).toBe(true)
+    expect(ms[1].classList.contains('is-current')).toBe(false)
+    expect(countText(c)).toBe('1/2')
+  })
+
+  it('↑/↓ 循环切换当前命中并更新计数；无命中时禁用按钮', async () => {
+    const c = mount(
+      <ReaderView path="a.md" content={NOTE} findOpen onFindClose={() => {}} onOpenNote={() => {}} />
+    )
+    await flush()
+    type(c, '快速')
+    await flush()
+
+    const nextBtn = c.querySelector('.find-btn[aria-label="下一个"]') as HTMLButtonElement
+    const prevBtn = c.querySelector('.find-btn[aria-label="上一个"]') as HTMLButtonElement
+
+    nextBtn.click()
+    await flush()
+    expect(countText(c)).toBe('2/2')
+    expect(marks(c)[1].classList.contains('is-current')).toBe(true)
+
+    nextBtn.click() // 尾部 → 循环回 1
+    await flush()
+    expect(countText(c)).toBe('1/2')
+    expect(marks(c)[0].classList.contains('is-current')).toBe(true)
+
+    prevBtn.click() // 头部 → 循环到末尾
+    await flush()
+    expect(countText(c)).toBe('2/2')
+
+    type(c, 'zzz') // 无命中
+    await flush()
+    expect(countText(c)).toBe('无结果')
+    expect(marks(c).length).toBe(0)
+    expect(nextBtn.disabled).toBe(true)
+    expect(prevBtn.disabled).toBe(true)
+  })
+
+  it('回车 → 下一个，Shift+回车 → 上一个', async () => {
+    const c = mount(
+      <ReaderView path="a.md" content={NOTE} findOpen onFindClose={() => {}} onOpenNote={() => {}} />
+    )
+    await flush()
+    type(c, '快速')
+    await flush()
+
+    pressKey(c, 'Enter')
+    await flush()
+    expect(countText(c)).toBe('2/2')
+
+    pressKey(c, 'Enter', true)
+    await flush()
+    expect(countText(c)).toBe('1/2')
+  })
+
+  it('查找期间 .reader 滚动不冒泡 onScroll（阅读位置不被污染）', async () => {
+    const onScroll = vi.fn()
+    const c = mount(
+      <ReaderView
+        path="a.md"
+        content={NOTE}
+        findOpen
+        onFindClose={() => {}}
+        onScroll={onScroll}
+        onOpenNote={() => {}}
+      />
+    )
+    await flush()
+    const host = c.querySelector('.reader') as HTMLElement
+    host.dispatchEvent(new Event('scroll'))
+    expect(onScroll).not.toHaveBeenCalled()
+
+    // 关闭查找 → 滚动恢复冒泡给 App 保存
+    render(
+      <ReaderView
+        path="a.md"
+        content={NOTE}
+        findOpen={false}
+        onFindClose={() => {}}
+        onScroll={onScroll}
+        onOpenNote={() => {}}
+      />,
+      c
+    )
+    await flush()
+    host.dispatchEvent(new Event('scroll'))
+    expect(onScroll).toHaveBeenCalledTimes(1)
+  })
+
+  it('关闭查找 → 还原查找前阅读位置，清高亮、清输入、bar 消失', async () => {
+    const c = mount(<ReaderView path="a.md" content={NOTE} onOpenNote={() => {}} />)
+    await flush()
+    const host = c.querySelector('.reader') as HTMLElement
+    host.scrollTop = 300 // 读者已读到 300 才打开查找
+
+    render(
+      <ReaderView path="a.md" content={NOTE} findOpen onFindClose={() => {}} onOpenNote={() => {}} />,
+      c
+    )
+    await flush()
+    type(c, '快速')
+    await flush()
+    expect(marks(c).length).toBe(2)
+
+    host.scrollTop = 120 // 查找过程滚动过
+
+    render(
+      <ReaderView
+        path="a.md"
+        content={NOTE}
+        findOpen={false}
+        onFindClose={() => {}}
+        onOpenNote={() => {}}
+      />,
+      c
+    )
+    await flush()
+
+    expect(host.scrollTop).toBe(300) // 还原 pre-find 位置
+    expect(c.querySelector('.find-bar')).toBeNull()
+    expect(c.querySelector('.find-input')).toBeNull()
+    expect(marks(c).length).toBe(0)
+  })
+
+  it('shadow 重建（refreshToken）后查找高亮重放，不丢当前计数', async () => {
+    const c = mount(
+      <ReaderView path="a.md" content={NOTE} findOpen onFindClose={() => {}} onOpenNote={() => {}} />
+    )
+    await flush()
+    type(c, '快速')
+    await flush()
+    expect(marks(c).length).toBe(2)
+
+    render(
+      <ReaderView
+        path="a.md"
+        content={NOTE}
+        findOpen
+        refreshToken={1}
+        onFindClose={() => {}}
+        onOpenNote={() => {}}
+      />,
+      c
+    )
+    await flush()
+    await flush()
+
+    expect(marks(c).length).toBe(2)
+    expect(countText(c)).toBe('1/2')
+  })
+})

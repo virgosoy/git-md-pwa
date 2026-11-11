@@ -34,6 +34,7 @@ export function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [recent, setRecent] = useState<ReadingRecord[]>([])
   const [current, setCurrent] = useState<OpenNote | null>(null)
+  const [findOpen, setFindOpen] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const scrollTimer = useRef<number | undefined>(undefined)
 
@@ -157,6 +158,7 @@ export function App() {
       return
     }
     setNotice(null)
+    setFindOpen(false) // 切入新笔记默认关闭查找（find 状态不跨篇）
     const reading = await loadReading(path)
     setCurrent({ path, content: file.content, scrollTop: reading?.scrollTop ?? 0 })
     await recordOpen(path)
@@ -182,9 +184,20 @@ export function App() {
               ‹ 返回
             </button>
             <h1 class="app__title app__title--trunc">{current.path}</h1>
-            <button class="btn" onClick={() => void downloadNoteAssets()}>
-              全下
-            </button>
+            <div class="app__actions">
+              <button class="btn" onClick={() => void downloadNoteAssets()}>
+                全下
+              </button>
+              {/* 09 单篇查找入口：PWA 独立模式无 Safari 原生 find，查找在应用内 */}
+              <button
+                class="btn"
+                aria-pressed={findOpen}
+                aria-label={findOpen ? '关闭笔记内查找' : '在笔记内查找'}
+                onClick={() => setFindOpen((o) => !o)}
+              >
+                🔍
+              </button>
+            </div>
           </>
         ) : (
           <>
@@ -216,6 +229,8 @@ export function App() {
             renderMermaid={settings?.renderMermaid ?? false}
             tocPinned={settings?.tocPinned ?? false}
             onTocPinChange={(next) => void handleTocPinChange(next)}
+            findOpen={findOpen}
+            onFindClose={() => setFindOpen(false)}
             onOpenNote={(p) => void openNote(p)}
             onScroll={handleScroll}
           />
