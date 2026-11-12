@@ -25,7 +25,10 @@ jobs:
           cache: npm
       - run: node scripts/verify-lock-platforms.mjs
       - run: npm ci
+      # 测试红则不上线（guardrail）；verify-pwa 复用刚 build 的 dist，不二次构建
+      - run: npm test
       - run: npm run build
+      - run: node scripts/verify-pwa.mjs
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

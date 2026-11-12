@@ -17,7 +17,7 @@ This repository is **public** (GitHub Pages hosting requires it). It must never 
 | `npm test` | vitest 全量 |
 | `npm run test:watch` | vitest 监听单测 |
 | `npm run build` | 类型检查 + 构建 |
-| `npm run verify:pwa` | 构建 + 校验 PWA 产物（sw.js/manifest/首页预缓存） |
+| `npm run verify:pwa` | 构建 + 校验 PWA 产物（sw.js/manifest/首页预缓存/version.json；prompt 不变量：无自动 clientsClaim、有 SKIP_WAITING 通道） |
 | `bash scripts/wizard-token.sh` | 交互向导：建 GitHub 细粒度只读令牌联调（写入 gitignore 的 `.env`） |
 
 ### 架构（模块→责任）
@@ -31,18 +31,21 @@ This repository is **public** (GitHub Pages hosting requires it). It must never 
 - `src/search/{index,SearchResults}.tsx` — 全局标题搜索（H1–H6 + 文件名/路径；命中标「文件」/「标题 H{n}」，可双标）。
 - `src/assets/{extract,store,pipeline,wire}.ts` — 资源懒加载：API 拉字节→dataURL 入 `assets` 表→装配给 img/a；>10MB 占位；「全下」。
 - `src/settings/{store,SettingsView}.tsx` — 设置（PAT / owner/repo / 同步开关默认开、公式 KaTeX / Mermaid 开关默认关；公开库令牌可不填）。
+- `src/updates/{version,format,useUpdate,UpdateBanner}.ts` — PWA 更新编排：prompt 模式「发现新版本」横幅（Q8：同版本只提示一次，记住到 settings）＋在线每 10 分钟周期复查＋Settings「检查更新」（永远 verbose）。版本串 `v<semver>+<git短SHA>` 经 vite `define` 注入 `__APP_VERSION__`，同串构建期写 `dist/version.json`（不入预缓存、只走网络，更新检测读它）。
 
 ### 测试缝约定
 
 - 逻辑优先写成**纯函数/组件**，测试缝与用户确认后写；断言用**已知字面量**（独立来源），不拍快照。
 - 测试数据一律**哑值**（`me/fixtures`、`ghp_test_dummy`…）；fixture 只锚公开仓库形状。
 - UI 接线（App 集成）用 stub fetch + 预置 IndexedDB 的集成测试覆盖关键验收（如同步开关守门、搜索过滤）。
+- 集成测试 **render `<App/>` 前先 `vi.mock('virtual:pwa-register/preact')` 成空适配器**，否则 vitest 解析该虚拟模块直接崩（`file:///@vite-plugin-pwa/…`）；SW 引擎只在 `src/updates/useUpdate.test.tsx` 经此模块缝驱动。
 
 ### 关键规则
 
 - **隐私红线**见上节；写任何会被 commit 的文档/代码前自查一遍。
 - 改 DB schema 只在 `src/idb.ts`；改部署路径同时改 `vite.config.ts` 的 `base` 与 manifest `start_url`（当前 `/git-md-pwa/`）。
 - 线上 = GitHub Pages 子路径；发布靠 push `main` → `.github/workflows/pages.yml`。
+- 手机 PWA「打开还是旧版」排查：先 `git fetch https://github.com/<owner>/<repo> main` 比对远端（本地=远端 → 部署无误，问题在设备侧）；部署正常仍旧 → 多为 **iOS 对已装主屏 PWA 守旧 SW（不会自己好）**，验收=重装（删图标 → Safari 清除站点数据 → 重开 → 重加）。本版 workbox **无 `updateViaCache` 选项，勿加**——浏览器默认对 SW 主脚本做网络重校验。
 
 ### 已知工具链坑：原生平台二进制包（根因 + 守卫）
 
