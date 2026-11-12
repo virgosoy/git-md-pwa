@@ -22,6 +22,7 @@ describe('settingsStore', () => {
     expect(s.renderMath).toBe(false)
     expect(s.renderMermaid).toBe(false)
     expect(s.tocPinned).toBe(false)
+    expect(s.lastPromptedVersion).toBe('')
   })
 
   it('保存后重新加载，往返保留 token/owner/repo/autoSync/renderMath/renderMermaid/tocPinned', async () => {
@@ -32,7 +33,8 @@ describe('settingsStore', () => {
       autoSync: false,
       renderMath: true,
       renderMermaid: true,
-      tocPinned: true
+      tocPinned: true,
+      lastPromptedVersion: 'v0.0.1+aaa'
     })
     const s = await loadSettings()
     expect(s).toEqual({
@@ -42,7 +44,8 @@ describe('settingsStore', () => {
       autoSync: false,
       renderMath: true,
       renderMermaid: true,
-      tocPinned: true
+      tocPinned: true,
+      lastPromptedVersion: 'v0.0.1+aaa'
     })
   })
 
@@ -64,8 +67,14 @@ describe('settingsStore', () => {
       autoSync: false,
       renderMath: false,
       renderMermaid: false,
-      tocPinned: false
+      tocPinned: false,
+      lastPromptedVersion: ''
     })
+  })
+
+  it('lastPromptedVersion 单独持久化：同版本不再提示的哨兵值往返不丢', async () => {
+    await saveSettings({ lastPromptedVersion: 'v0.0.2+zzz' })
+    expect((await loadSettings()).lastPromptedVersion).toBe('v0.0.2+zzz')
   })
 
   it('renderMath 单独持久化：false→true 往返不丢', async () => {
@@ -98,7 +107,8 @@ describe('settingsStore', () => {
         autoSync: true,
         renderMath: false,
         renderMermaid: false,
-        tocPinned: false
+        tocPinned: false,
+        lastPromptedVersion: ''
       })
     ).toBe(true)
     expect(
@@ -109,7 +119,8 @@ describe('settingsStore', () => {
         autoSync: true,
         renderMath: false,
         renderMermaid: false,
-        tocPinned: false
+        tocPinned: false,
+        lastPromptedVersion: ''
       })
     ).toBe(false)
     expect(
@@ -120,7 +131,8 @@ describe('settingsStore', () => {
         autoSync: true,
         renderMath: false,
         renderMermaid: false,
-        tocPinned: false
+        tocPinned: false,
+        lastPromptedVersion: ''
       })
     ).toBe(false)
     expect(isConfigured(DEFAULT_SETTINGS)).toBe(false)

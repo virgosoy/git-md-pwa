@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks'
 import type { AppSettings } from './store'
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from './store'
+import { formatAgo } from '../updates/format'
 
 /** AppSettings 中的布尔开关键（bindCheck 只对这些键开放） */
 type BooleanKey = { [K in keyof AppSettings]: AppSettings[K] extends boolean ? K : never }[keyof AppSettings]
@@ -8,9 +9,23 @@ type BooleanKey = { [K in keyof AppSettings]: AppSettings[K] extends boolean ? K
 export interface SettingsViewProps {
   onClose: () => void
   onSaved?: () => void
+  /** 当前构建版本串（来自 useUpdate，经 vite define 注入） */
+  appVersion?: string
+  lastCheckedAt?: number | null
+  checking?: boolean
+  latestNote?: string | null
+  onCheckUpdates?: () => void
 }
 
-export function SettingsView({ onClose, onSaved }: SettingsViewProps) {
+export function SettingsView({
+  onClose,
+  onSaved,
+  appVersion,
+  lastCheckedAt,
+  checking = false,
+  latestNote = null,
+  onCheckUpdates
+}: SettingsViewProps) {
   const [form, setForm] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [loaded, setLoaded] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -113,6 +128,21 @@ export function SettingsView({ onClose, onSaved }: SettingsViewProps) {
         />
         <span>渲染 Mermaid 图表（默认关闭；关或写错时显示代码块）</span>
       </label>
+
+      {onCheckUpdates && (
+        <div class="field">
+          <span class="field__label">应用版本与更新</span>
+          <div class="settings__update">
+            <span class="field__hint">
+              版本 {appVersion ?? '—'} · 上次检查 {formatAgo(lastCheckedAt, Date.now())}
+            </span>
+            <button type="button" class="btn" onClick={onCheckUpdates} disabled={checking}>
+              {checking ? '检查中…' : '检查更新'}
+            </button>
+          </div>
+          {latestNote && <p class="settings__saved">{latestNote}</p>}
+        </div>
+      )}
 
       <div class="settings__actions">
         <button type="submit" class="btn btn--primary" disabled={!loaded}>

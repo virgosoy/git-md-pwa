@@ -21,6 +21,8 @@ export interface AppSettings {
   renderMermaid: boolean
   /** 单篇 TOC 固定偏好：开=点目录条目后面板保持展开；全局存储，默认关 */
   tocPinned: boolean
+  /** 最近已提示过的新版本串（Q8：同版本只提示一次；设备本地） */
+  lastPromptedVersion: string
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -30,7 +32,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoSync: true,
   renderMath: false,
   renderMermaid: false,
-  tocPinned: false
+  tocPinned: false,
+  lastPromptedVersion: ''
 }
 
 const KEY = 'app'

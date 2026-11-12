@@ -19,6 +19,8 @@ import { loadMirrorMeta } from './mirror/store'
 import { runSync } from './sync/sync'
 import type { SyncFailKind } from './sync/sync'
 import { SyncBanner } from './sync/SyncBanner'
+import { UpdateBanner } from './updates/UpdateBanner'
+import { useUpdate } from './updates/useUpdate'
 
 interface OpenNote {
   path: string
@@ -30,6 +32,7 @@ interface OpenNote {
 const SCROLL_SAVE_DELAY = 300
 
 export function App() {
+  const updates = useUpdate()
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [recent, setRecent] = useState<ReadingRecord[]>([])
@@ -214,6 +217,22 @@ export function App() {
         )}
       </header>
 
+      {updates.banner && (
+        <UpdateBanner
+          live={updates.banner.live}
+          onApply={() => void updates.applyUpdate()}
+          onIgnore={() => void updates.dismissUpdate()}
+        />
+      )}
+      {updates.offlineReady && (
+        <div class="update-banner" role="status">
+          <span class="update-banner__text">📦 已可离线阅读</span>
+          <button class="update-banner__btn" onClick={updates.dismissOfflineReady}>
+            知道了
+          </button>
+        </div>
+      )}
+
       <SyncBanner status={syncStatus} fail={syncFail} lastSyncedAt={lastSyncedAt} />
 
       <main class={current ? 'app__main app__main--flush' : 'app__main'}>
@@ -240,6 +259,11 @@ export function App() {
           <SettingsView
             onClose={() => setShowSettings(false)}
             onSaved={() => void handleSettingsSaved()}
+            appVersion={updates.appVersion}
+            lastCheckedAt={updates.lastCheckedAt}
+            checking={updates.checking}
+            latestNote={updates.latestNote}
+            onCheckUpdates={() => void updates.checkForUpdates()}
           />
         ) : recent.length === 0 && files.length === 0 ? (
           <div class="welcome">

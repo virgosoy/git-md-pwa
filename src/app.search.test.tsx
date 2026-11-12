@@ -5,6 +5,16 @@ import { saveSettings } from './settings/store'
 import { upsertFile } from './mirror/store'
 import { wipeDb } from './test/wipeDb'
 
+// SW 更新管道在 App 集成测试里不关心：把 virtual:pwa-register/preact 这个模块缝假成
+// 空适配器（真实引擎是浏览器 SW 生命周期，jsdom 里不跑、也不该被跑）。
+vi.mock('virtual:pwa-register/preact', () => ({
+  useRegisterSW: () => ({
+    needRefresh: [false, () => {}],
+    offlineReady: [false, () => {}],
+    updateServiceWorker: async () => {}
+  })
+}))
+
 // S3 · 首页全局标题搜索（集成）：输入片段过滤列表，条目带「标题/文件」标签，离线可搜
 
 function file(path: string, content: string) {

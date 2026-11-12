@@ -4,6 +4,16 @@ import { App } from './app'
 import { saveSettings } from './settings/store'
 import { wipeDb } from './test/wipeDb'
 
+// SW 更新管道在 App 集成测试里不关心：把 virtual:pwa-register/preact 这个模块缝假成
+// 空适配器（真实引擎是浏览器 SW 生命周期，jsdom 里不跑、也不该被跑）。
+vi.mock('virtual:pwa-register/preact', () => ({
+  useRegisterSW: () => ({
+    needRefresh: [false, () => {}],
+    offlineReady: [false, () => {}],
+    updateServiceWorker: async () => {}
+  })
+}))
+
 // S4 · 同步开关守门（集成）：完成定义里「关掉开关后重开不请求网络」。
 // 用 stub fetch 计数 api.github.com 的访问。
 

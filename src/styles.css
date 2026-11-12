@@ -201,6 +201,48 @@ body {
   border-bottom: 1px solid #3f3f46;
 }
 
+/* 更新横幅（Q5：顶栏下细横幅，accent 色以示有新版） */
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  color: #fff;
+  background: var(--accent);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.update-banner__text {
+  line-height: 1.3;
+}
+
+.update-banner__actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.update-banner__btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  background: transparent;
+  color: #fff;
+  border-radius: 0.4rem;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+/* 设置页「版本与更新」行 */
+.settings__update {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
 /* 最近打开 */
 .recent__title {
   margin: 0 0 0.6rem;
