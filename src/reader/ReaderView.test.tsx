@@ -436,6 +436,25 @@ describe('ReaderView 单篇 TOC（08）', () => {
     expect(pinCalls).toEqual([true, false])
     expect(pin.classList.contains('is-active')).toBe(false)
   })
+
+  it('面板头部（目录 + 固定）在滚动列表之外，条目才在 list 里（吸顶）', async () => {
+    const c = mount(<ReaderView path="a.md" content={NOTE} onOpenNote={() => {}} />)
+    await flush()
+    const root = shadowOf(c)
+    const panel = root.querySelector('.reader-toc__panel') as HTMLElement
+    const head = panel.querySelector('.reader-toc__head') as HTMLElement
+    const pin = head.querySelector('.reader-toc__pin') as HTMLElement
+    const list = panel.querySelector('.reader-toc__list') as HTMLElement
+    const items = [...root.querySelectorAll('.reader-toc__item')] as HTMLElement[]
+
+    expect(head).toBeTruthy()
+    expect(pin).toBeTruthy()
+    expect(items.length).toBeGreaterThan(0)
+    // 头部整行不随条目滚动：固定按钮与头部都在滚动容器之外，条目全部在容器内
+    expect(list.contains(head)).toBe(false)
+    expect(list.contains(pin)).toBe(false)
+    expect(items.every((it) => list.contains(it))).toBe(true)
+  })
 })
 
 describe('ReaderView 单篇查找（09）', () => {

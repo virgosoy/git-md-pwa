@@ -54,11 +54,16 @@ export function headingScrollTarget(host: HTMLElement, heading: Element, offset 
   return Math.max(0, host.scrollTop + (headRect.top - hostRect.top) - offset)
 }
 
-/** 当前所在章节：scrollTop 已越过其目标位置的最后一个标题；无则 -1（还在首个标题上方）。 */
+/**
+ * 当前所在章节：scrollTop 已越过其目标位置的最后一个标题；无则 -1（还在首个标题上方）。
+ * target 取 floor：点击跳转时浏览器把浮点 scrollTop 向下取整，标题落在阅读线 + 亚像素 ε，
+ * 重算的 target = scrollTop + ε；不 floor 的话 `<= scrollTop` 会把被点标题误判成上一个。
+ * floor 等价于「<1px 容差」，既消亚像素、又不提前 1px 高亮。
+ */
 export function currentHeadingIndex(targets: number[], scrollTop: number): number {
   let idx = -1
   for (let i = 0; i < targets.length; i++) {
-    if (targets[i] <= scrollTop) idx = i
+    if (Math.floor(targets[i]) <= scrollTop) idx = i
   }
   return idx
 }

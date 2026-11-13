@@ -57,14 +57,16 @@ export function App() {
   const hits = useMemo(() => searchHeadings(index, query), [index, query])
   const [readerTick, setReaderTick] = useState(0)
 
-  // 资源加载器：图/PDF 按需拉取（先查缓存再网络，缓存为 dataURL）
+  // 资源加载器：图/PDF 按需拉取（先查缓存再网络，缓存为 dataURL）。
+  // 依赖只收敛到 token/owner/repo：这三者变化才重建 reader（开关类设置改了不应重装资源/重建 shadow）。
+  const { token: assetToken, owner: assetOwner, repo: assetRepo } = settings ?? {}
   const assetLoader = useMemo<AssetLoader | null>(() => {
-    const s = settings
-    if (!s || !isConfigured(s)) return null
-    const client = createGithubClient(s.token)
-    const repo = { owner: s.owner, repo: s.repo }
+    // 未配置（owner/repo 空）→ 无加载器；token 可为空串（公开库匿名只读）
+    if (!assetOwner || !assetRepo) return null
+    const client = createGithubClient(assetToken ?? '')
+    const repo = { owner: assetOwner, repo: assetRepo }
     return { load: (p) => ensureAsset(client, repo, p) }
-  }, [settings])
+  }, [assetToken, assetOwner, assetRepo])
 
   async function downloadNoteAssets(): Promise<void> {
     if (!current || !assetLoader) return

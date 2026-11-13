@@ -104,4 +104,12 @@ describe('headingScrollTarget / currentHeadingIndex', () => {
     expect(currentHeadingIndex([50, 200, 400], 900)).toBe(2)
     expect(currentHeadingIndex([], 10)).toBe(-1)
   })
+
+  it('亚像素：点击跳转后重算 target = scrollTop + ε，仍判为被点标题（不是上一个）', () => {
+    // scrollTop 200 = 刚点中目标 200 的标题；重算后 target 因亚像素取整变 200.4
+    expect(currentHeadingIndex([50, 200.4], 200)).toBe(1)
+    expect(currentHeadingIndex([50, 200.99], 200)).toBe(1)
+    // 不提前：还差 1px 才到目标 200 时，不越级高亮
+    expect(currentHeadingIndex([50, 200], 199)).toBe(0)
+  })
 })

@@ -50,18 +50,25 @@ const baseNoteCss = `
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 .reader-toc__toggle.is-active, .reader-toc__toggle:active { background: #3f83f8; border-color: #3f83f8; color: #fff; }
+/* 11：面板头部（目录 + 固定）固定在面板顶，只有条目列表滚动 */
 .reader-toc__panel {
   display: none; position: absolute; right: 0; bottom: calc(100% + 0.5rem); width: 15rem;
-  max-height: 55vh; overflow-y: auto; background: #1f1f23; border: 1px solid #3f3f46;
+  background: #1f1f23; border: 1px solid #3f3f46;
   border-radius: 0.5rem; padding: 0.5rem;
 }
 .reader-toc__panel.is-open { display: block; }
+.reader-toc__list {
+  max-height: 40vh; overflow-y: auto; margin-top: 0.5rem;
+}
 .reader-toc__item {
   display: block; width: 100%; text-align: left; border: 0; background: none; color: #d4d4d8;
   font-size: 0.85rem; line-height: 1.4; padding: 0.25rem 0; cursor: pointer;
 }
 .reader-toc__item.is-current { color: #3f83f8; font-weight: 600; }
-.reader-toc__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem; }
+.reader-toc__head {
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid #3f3f46; padding-bottom: 0.35rem;
+}
 .reader-toc__title { font-size: 0.8rem; color: #a1a1aa; }
 .reader-toc__pin {
   appearance: none; border: 1px solid #3f3f46; background: none; color: #a1a1aa;
@@ -121,6 +128,9 @@ function attachTocChrome(
   head.appendChild(pin)
   nav.appendChild(head)
 
+  // 11：条目收进可滚动 list，头部（目录 + 固定）留在面板顶部不随列表滚走
+  const list = document.createElement('div')
+  list.className = 'reader-toc__list'
   const items: HTMLButtonElement[] = []
   for (const h of headings) {
     const btn = document.createElement('button')
@@ -132,9 +142,10 @@ function attachTocChrome(
       hostEl.scrollTop = headingScrollTarget(hostEl, h.el)
       if (!pinned) collapse()
     })
-    nav.appendChild(btn)
+    list.appendChild(btn)
     items.push(btn)
   }
+  nav.appendChild(list)
   const wrap = document.createElement('div')
   wrap.className = 'reader-toc'
   const toggle = document.createElement('button')
