@@ -22,10 +22,16 @@ export function SearchResults({ hits, onOpen }: SearchResultsProps) {
             {h.headingHits.length > 0 && (
               <span class="tag">{h.headingHits.map((hh) => `标题 H${hh.level}`).join(JOIN)}</span>
             )}
+            {h.bodyMatch && <span class="tag">正文</span>}
             <span class="search-item__text">
-              {h.headingHits.length > 0 ? h.headingHits.map((hh) => hh.text).join(JOIN) : h.path}
+              {h.headingHits.length > 0
+                ? h.headingHits.map((hh) => hh.text).join(JOIN)
+                : h.bodySnippet ?? h.path}
             </span>
             <span class="search-item__path">{h.path}</span>
+            {h.bodyMatch && h.bodySnippet && h.headingHits.length > 0 && (
+              <span class="search-item__snippet">…{h.bodySnippet}…</span>
+            )}
           </button>
         </li>
       ))}

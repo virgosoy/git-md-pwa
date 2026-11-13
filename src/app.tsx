@@ -5,7 +5,7 @@ import { isConfigured, loadSettings, saveSettings } from './settings/store'
 import { getFile, loadFiles } from './mirror/store'
 import type { StoredFile } from './mirror/store'
 import { NotesList } from './notes/NotesList'
-import { buildIndex, searchHeadings } from './search'
+import { buildIndex, searchNotes } from './search'
 import { SearchResults } from './search/SearchResults'
 import { ensureAsset } from './assets/pipeline'
 import type { AssetLoader } from './assets/wire'
@@ -52,9 +52,9 @@ export function App() {
   const [files, setFiles] = useState<StoredFile[]>([])
   const [query, setQuery] = useState('')
 
-  // 标题索引：内容变化才重算（591 篇×正文解析，不同步不重复跑）
+  // 标题+正文索引：内容变化才重算（591 篇×正文解析，不同步不重复跑）
   const index = useMemo(() => buildIndex(files), [files])
-  const hits = useMemo(() => searchHeadings(index, query), [index, query])
+  const hits = useMemo(() => searchNotes(index, query), [index, query])
   const [readerTick, setReaderTick] = useState(0)
 
   // 资源加载器：图/PDF 按需拉取（先查缓存再网络，缓存为 dataURL）。
@@ -278,7 +278,7 @@ export function App() {
             <input
               class="search-input"
               type="search"
-              placeholder="搜索标题 / 文件名"
+              placeholder="搜索标题 / 文件名 / 正文"
               value={query}
               onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
             />

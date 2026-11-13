@@ -15,7 +15,7 @@ vi.mock('virtual:pwa-register/preact', () => ({
   })
 }))
 
-// S3 · 首页全局标题搜索（集成）：输入片段过滤列表，条目带「标题/文件」标签，离线可搜
+// S3 · 首页全局搜索（集成）：输入片段过滤列表，条目带「标题/文件/正文」标签，离线可搜
 
 function file(path: string, content: string) {
   return { path, sha: `sha-${path}`, content, size: content.length, status: 'ok' as const }
@@ -33,12 +33,12 @@ function setSearch(container: HTMLElement, value: string): void {
   input.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
-describe('首页全局标题搜索（集成）', () => {
+describe('首页全局搜索（集成）', () => {
   beforeEach(async () => {
     await wipeDb()
     await saveSettings({ token: '', owner: 'me', repo: 'fixtures', autoSync: false })
     await upsertFile(file('docs/归档.md', '# 归档记录\n## 部署排障'))
-    await upsertFile(file('README.md', '无标题反正'))
+    await upsertFile(file('README.md', '今天下雨了'))
   })
   afterEach(() => {
     document.body.innerHTML = ''
@@ -76,5 +76,21 @@ describe('首页全局标题搜索（集成）', () => {
     setSearch(c, '')
     await flushFrames()
     expect(c.textContent).toContain('README.md')
+  })
+
+  it('正文命中 → 带「正文」标签与摘录，不含标题标签', async () => {
+    const c = document.createElement('div')
+    document.body.appendChild(c)
+    render(<App />, c)
+    await flushFrames()
+
+    setSearch(c, '下雨')
+    await flushFrames()
+
+    expect(c.textContent).toContain('正文')
+    expect(c.textContent).toContain('今天下雨了')
+    expect(c.textContent).toContain('README.md')
+    expect(c.textContent).not.toContain('标题')
+    expect(c.textContent).not.toContain('docs/归档.md')
   })
 })
