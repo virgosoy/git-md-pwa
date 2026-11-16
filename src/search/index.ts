@@ -101,7 +101,9 @@ export function findBodySnippet(content: string, query: string): string | null {
 
 /**
  * 按片段检索索引：路径/文件名、标题、正文任一含片段（大小写不敏感）即命中。
- * 空查询返回空数组；结果按路径排序。
+ * 空查询返回空数组。
+ * 排序（票 14）：档位 文件名 > 标题 > 目录 > 正文；档内 精确 > 前缀 > 包含；
+ * 标题档同质量越深越前（H6 > … > H1）；最终平局按 path。
  */
 export function searchNotes(index: IndexEntry[], query: string): SearchHit[] {
   const q = query.trim().toLowerCase()
@@ -121,5 +123,73 @@ export function searchNotes(index: IndexEntry[], query: string): SearchHit[] {
       })
     }
   }
-  return hits.sort((a, b) => a.path.localeCompare(b.path))
+  // 排序键一次算好再排（Schwartzian），比较器不再重算 rank
+  return hits
+    .map((h) => ({ hit: h, rank: rankHit(h, q) }))
+    .sort((a, b) => compareRanks(a.rank, b.rank, a.hit.path, b.hit.path))
+    .map((x) => x.hit)
+}
+
+// 排序档位：数值越小越靠前。文件名(0) > 标题(1) > 目录(2) > 正文(3)
+const BUCKET_FILE = 0
+const BUCKET_HEADING = 1
+const BUCKET_DIR = 2
+const BUCKET_BODY = 3
+
+interface HitRank {
+  bucket: number
+  /** 档内质量：0 精确 > 1 前缀 > 2 包含 */
+  quality: number
+  /** 标题档：命中的标题级别（越深越大；同质量 H6 在前） */
+  level: number
+}
+
+/** 去掉扩展名的文件名（镜像只收 .md） */
+function fileNameStem(path: string): string {
+  const base = path.slice(path.lastIndexOf('/') + 1)
+  return base.replace(/\.md$/i, '')
+}
+
+// 目录档/正文档：quality/level 不参与排序（恒 0，只比 path）
+const DIR_RANK: HitRank = { bucket: BUCKET_DIR, quality: 0, level: 0 }
+const BODY_RANK: HitRank = { bucket: BUCKET_BODY, quality: 0, level: 0 }
+
+/**
+ * 每个命中只进它命中的最高档：
+ * 文件名命中 → 文件档；否则标题命中 → 标题档；否则仅路径命中 → 目录档；否则正文命中 → 正文档。
+ */
+function rankHit(h: SearchHit, q: string): HitRank {
+  // 查询串与文件名同侧剥 .md：两端都剥才可比（避免把整文件名「归档.md」当成目录命中降档）；
+  // 仅当查询确实带 .md 后缀且前文非空才剥（防 q==='.md' 时 startWith('') 全中）
+  const qStem = q.length > 3 && q.endsWith('.md') ? q.slice(0, -3) : q
+  const stem = fileNameStem(h.path).toLowerCase()
+  if (stem === qStem) return { bucket: BUCKET_FILE, quality: 0, level: 0 }
+  if (stem.startsWith(qStem)) return { bucket: BUCKET_FILE, quality: 1, level: 0 }
+  if (stem.includes(qStem)) return { bucket: BUCKET_FILE, quality: 2, level: 0 }
+  if (h.headingHits.length > 0) {
+    // 多标题命中取最优：更精确优先；同质量取最深
+    let quality = 3
+    let level = 0
+    for (const hh of h.headingHits) {
+      const t = hh.text.toLowerCase()
+      const qq = t === q ? 0 : t.startsWith(q) ? 1 : 2
+      if (qq < quality || (qq === quality && hh.level > level)) {
+        quality = qq
+        level = hh.level
+      }
+    }
+    return { bucket: BUCKET_HEADING, quality, level }
+  }
+  if (h.fileMatch) return DIR_RANK
+  return BODY_RANK
+}
+
+function compareRanks(ar: HitRank, br: HitRank, ap: string, bp: string): number {
+  if (ar.bucket !== br.bucket) return ar.bucket - br.bucket
+  // 只有文件名/标题档有质量与深度：目录/正文档恒 0，直接比 path
+  if (ar.bucket === BUCKET_FILE || ar.bucket === BUCKET_HEADING) {
+    if (ar.quality !== br.quality) return ar.quality - br.quality
+    if (ar.bucket === BUCKET_HEADING && ar.level !== br.level) return br.level - ar.level
+  }
+  return ap.localeCompare(bp)
 }
