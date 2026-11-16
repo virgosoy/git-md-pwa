@@ -44,6 +44,17 @@ export function assignHeadingIds(root: ParentNode): TocHeading[] {
 }
 
 /**
+ * 目录标题过滤（13 · 单篇 TOC 搜索，仅搜目录标题）。
+ * 扁平过滤：每条按自己标题文字独立判断（父命中不连带子）；空查询返回原列表。
+ * 结果保留每条 level/el 引用，供层级缩进与点击跳转。
+ */
+export function filterHeadings(headings: TocHeading[], query: string): TocHeading[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return headings
+  return headings.filter((h) => h.text.toLowerCase().includes(q))
+}
+
+/**
  * 把标题滚到 host（滚动容器）顶下 offset 处所需的 scrollTop。
  * 用 getBoundingClientRect 差值得相对偏移，跨 Shadow DOM 边界也成立；
  * 上界由浏览器对 scrollTop 赋值的原生夹取兜底（jsdom 测不到 scrollHeight）。

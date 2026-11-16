@@ -3,6 +3,7 @@ import {
   slugify,
   assignHeadingIds,
   headingScrollTarget,
+  filterHeadings,
   currentHeadingIndex,
   type TocHeading
 } from './toc'
@@ -70,6 +71,46 @@ describe('assignHeadingIds', () => {
     const h = host('<h1>X</h1>')
     const [t] = assignHeadingIds(h) as [TocHeading]
     expect(t.el).toBe(h.querySelector('h1'))
+  })
+})
+
+describe('filterHeadings', () => {
+  // 用 assignHeadingIds 从真实 DOM 构造目录条目（含 el 引用，贴近生产路径）
+  function tocOf(html: string): TocHeading[] {
+    const d = document.createElement('div')
+    d.innerHTML = html
+    return assignHeadingIds(d)
+  }
+
+  it('空/纯空白查询返回原列表（不筛选）', () => {
+    const toc = tocOf('<h1>甲</h1><h2>乙</h2>')
+    expect(filterHeadings(toc, '')).toBe(toc)
+    expect(filterHeadings(toc, '   ')).toBe(toc)
+  })
+
+  it('大小写不敏感子串命中', () => {
+    const toc = tocOf('<h1>Alpha Core</h1><h2>beta</h2>')
+    expect(filterHeadings(toc, 'alpha').map((h) => h.text)).toEqual(['Alpha Core'])
+    expect(filterHeadings(toc, 'CORE').map((h) => h.text)).toEqual(['Alpha Core'])
+    expect(filterHeadings(toc, 'BETA').map((h) => h.text)).toEqual(['beta'])
+  })
+
+  it('扁平过滤：父标题命中不连带未命中的子标题', () => {
+    const toc = tocOf('<h1>甲</h1><h2>乙</h2><h3>丙</h3>')
+    expect(filterHeadings(toc, '甲').map((h) => h.text)).toEqual(['甲'])
+  })
+
+  it('无命中返回空数组', () => {
+    const toc = tocOf('<h1>甲</h1><h2>乙</h2>')
+    expect(filterHeadings(toc, '不存在')).toEqual([])
+  })
+
+  it('过滤结果保留每条 level 与原 el 引用（供点击跳转/层级缩进）', () => {
+    const toc = tocOf('<h1>X</h1><h2>Y</h2><h2>Z</h2>')
+    const out = filterHeadings(toc, 'z')
+    expect(out).toHaveLength(1)
+    expect([out[0].level, out[0].text]).toEqual([2, 'Z'])
+    expect(out[0].el).toBe(toc[2].el)
   })
 })
 

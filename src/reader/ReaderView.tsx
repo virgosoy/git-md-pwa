@@ -8,7 +8,7 @@ import { useLayoutEffect, useRef, useState } from 'preact/hooks'
 import { renderNote, mayHaveMath, mayHaveMermaid, createMd } from './render'
 import type { MathEngine } from './render'
 import { wireMermaid } from './mermaid'
-import { assignHeadingIds, headingScrollTarget, currentHeadingIndex, type TocHeading } from './toc'
+import { assignHeadingIds, headingScrollTarget, currentHeadingIndex, filterHeadings, type TocHeading } from './toc'
 import { classifyLink, resolveNotePath } from './links'
 import { wireAssets } from '../assets/wire'
 import type { AssetLoader } from '../assets/wire'
@@ -75,6 +75,22 @@ const baseNoteCss = `
   border-radius: 999px; font-size: 0.75rem; padding: 0.1rem 0.55rem; cursor: pointer;
 }
 .reader-toc__pin.is-active { color: #fff; background: #3f83f8; border-color: #3f83f8; }
+/* 13：目录搜索框（仅筛选标题）——头部下窄输入 + ✕ 清空 + 无匹配提示 */
+.reader-toc__filter { display: flex; gap: 0.3rem; margin-top: 0.5rem; }
+.reader-toc__search {
+  flex: 1; min-width: 0; appearance: none; background: #18181b; color: #e4e4e7;
+  border: 1px solid #3f3f46; border-radius: 0.375rem; padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+}
+.reader-toc__search:focus { outline: none; border-color: #3f83f8; }
+.reader-toc__search::-webkit-search-cancel-button { display: none; }
+.reader-toc__clear {
+  appearance: none; border: 1px solid #3f3f46; background: none; color: #a1a1aa;
+  border-radius: 0.375rem; font-size: 0.75rem; line-height: 1; padding: 0 0.45rem;
+  cursor: pointer; flex-shrink: 0;
+}
+.reader-toc__clear[hidden] { display: none; }
+.reader-toc__empty { font-size: 0.8rem; color: #a1a1aa; text-align: center; margin: 0.25rem 0 0; }
 /* 09：单篇查找高亮（mark 在 shadow 内；配色随 :root token，跨 shadow 边界继承） */
 .md-body mark.find-hit {
   background: var(--find-hit, rgba(63, 131, 248, 0.35));
@@ -128,24 +144,66 @@ function attachTocChrome(
   head.appendChild(pin)
   nav.appendChild(head)
 
-  // 11：条目收进可滚动 list，头部（目录 + 固定）留在面板顶部不随列表滚走
+  // 13：目录搜索框（仅筛选标题）——头部下、列表上；输入即过滤、✕ 清空恢复
+  const filter = document.createElement('div')
+  filter.className = 'reader-toc__filter'
+  const searchInput = document.createElement('input')
+  searchInput.type = 'search'
+  searchInput.className = 'reader-toc__search'
+  searchInput.placeholder = '筛选标题'
+  searchInput.setAttribute('aria-label', '筛选目录标题')
+  const clearBtn = document.createElement('button')
+  clearBtn.type = 'button'
+  clearBtn.className = 'reader-toc__clear'
+  clearBtn.textContent = '✕'
+  clearBtn.setAttribute('aria-label', '清空目录筛选')
+  clearBtn.hidden = true
+  filter.appendChild(searchInput)
+  filter.appendChild(clearBtn)
+
+  // 11：条目收进可滚动 list，头部（目录 + 固定 + 筛选）留在面板顶部不随列表滚走
   const list = document.createElement('div')
   list.className = 'reader-toc__list'
-  const items: HTMLButtonElement[] = []
-  for (const h of headings) {
-    const btn = document.createElement('button')
-    btn.type = 'button'
-    btn.className = 'reader-toc__item'
-    btn.style.paddingLeft = `${0.5 + (h.level - 1) * 0.9}rem` // 层级缩进
-    btn.textContent = h.text
-    btn.addEventListener('click', () => {
-      hostEl.scrollTop = headingScrollTarget(hostEl, h.el)
-      if (!pinned) collapse()
-    })
-    list.appendChild(btn)
-    items.push(btn)
+  // 13：可见条目与其原标题下标成对（单数组保序，滚动高亮按 srcIndex 映射回原标题）
+  let entries: Array<{ btn: HTMLButtonElement; srcIndex: number }> = []
+
+  /** 按当前查询重建条目列表（13 · 扁平过滤，父命中不连带子）；空结果给「无匹配」提示。 */
+  function renderList(): void {
+    const query = searchInput.value.trim()
+    const visible = filterHeadings(headings, query)
+    entries = []
+    list.textContent = ''
+    clearBtn.hidden = query === ''
+    for (const h of visible) {
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.className = 'reader-toc__item'
+      btn.style.paddingLeft = `${0.5 + (h.level - 1) * 0.9}rem` // 层级缩进
+      btn.textContent = h.text
+      btn.addEventListener('click', () => {
+        hostEl.scrollTop = headingScrollTarget(hostEl, h.el)
+        if (!pinned) collapse()
+      })
+      list.appendChild(btn)
+      entries.push({ btn, srcIndex: headings.indexOf(h) })
+    }
+    if (entries.length === 0 && query) {
+      const empty = document.createElement('p')
+      empty.className = 'reader-toc__empty'
+      empty.textContent = '无匹配'
+      list.appendChild(empty)
+    }
+    updateCurrent()
   }
+  searchInput.addEventListener('input', renderList)
+  clearBtn.addEventListener('click', () => {
+    searchInput.value = ''
+    renderList()
+    searchInput.focus()
+  })
+  nav.appendChild(filter)
   nav.appendChild(list)
+
   const wrap = document.createElement('div')
   wrap.className = 'reader-toc'
   const toggle = document.createElement('button')
@@ -165,18 +223,24 @@ function attachTocChrome(
     toggle.classList.remove('is-active')
   }
 
-  // 滚动高亮：实时按各标题目标位置定位当前章节（票 08 决策：rAF 节流，避免每帧几何重排）
+  // 滚动高亮：实时按各标题目标位置定位当前章节（票 08 决策：rAF 节流，避免每帧几何重排）。
+  // 13 过滤态：可见条目按 entries.srcIndex 映射回原标题，当前章节隐藏时无条目高亮。
   let raf = 0
+  function updateCurrent(): void {
+    const targets = headings.map((h) => headingScrollTarget(hostEl, h.el))
+    const idx = currentHeadingIndex(targets, hostEl.scrollTop)
+    entries.forEach((e) => e.btn.classList.toggle('is-current', e.srcIndex === idx))
+  }
   const onScroll = (): void => {
     if (raf) return
     raf = requestAnimationFrame(() => {
       raf = 0
-      const targets = headings.map((h) => headingScrollTarget(hostEl, h.el))
-      const idx = currentHeadingIndex(targets, hostEl.scrollTop)
-      items.forEach((it, i) => it.classList.toggle('is-current', i === idx))
+      updateCurrent()
     })
   }
   hostEl.addEventListener('scroll', onScroll)
+
+  renderList() // 初始全量；此后由输入/✕ 重建
   return () => {
     hostEl.removeEventListener('scroll', onScroll)
     if (raf) cancelAnimationFrame(raf)

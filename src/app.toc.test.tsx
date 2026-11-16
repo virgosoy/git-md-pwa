@@ -86,4 +86,36 @@ describe('App TOC 固定按钮（集成）', () => {
     expect(pin.classList.contains('is-active')).toBe(true)
     expect(pin.getAttribute('aria-pressed')).toBe('true')
   })
+
+  it('目录搜索：输入过滤条目、无匹配提示、✕ 清空恢复全量', async () => {
+    const c = document.createElement('div')
+    document.body.appendChild(c)
+    render(<App />, c)
+    await flushFrames()
+
+    const noteBtn = [...c.querySelectorAll('button')].find((b) => b.textContent === '笔记.md')
+    noteBtn!.click()
+    await flushUntilToc(c)
+
+    const root = shadowOf(c)
+    ;(root.querySelector('.reader-toc__toggle') as HTMLElement).click() // 展开面板
+
+    const input = root.querySelector('.reader-toc__search') as HTMLInputElement
+    const items = () => [...root.querySelectorAll('.reader-toc__item')]
+
+    // 输入「乙」→ 只留命中条目标题
+    input.value = '乙'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(items().map((b) => b.textContent)).toEqual(['乙'])
+
+    // 无命中 → 条目清空 + 「无匹配」提示
+    input.value = 'zzz'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(items()).toHaveLength(0)
+    expect((root.querySelector('.reader-toc__empty') as HTMLElement).textContent).toBe('无匹配')
+
+    // ✕ 清空 → 恢复全量（层级缩进样式仍在）
+    ;(root.querySelector('.reader-toc__clear') as HTMLElement).click()
+    expect(items().map((b) => b.textContent)).toEqual(['甲', '乙', '丙'])
+  })
 })
