@@ -19,10 +19,20 @@ export type ExtractMode = 'token' | 'regex'
 //（那些只在渲染阶段用；parse 只产出 block/inline token）。
 const indexMd: MarkdownItInstance = new MarkdownIt()
 
-// 围栏开口是前缀匹配（` ```js` 这类开栅信息行）；闭合必须是纯围栏行。
-const FENCE_OPEN_RE = /^(```|~~~)/
-function fenceCloses(line: string, ch: '`' | '~'): boolean {
-  return ch === '`' ? /^`{3,}$/.test(line) : /^~{3,}$/.test(line)
+// 围栏状态机（regex 回退路径）：记录开口字符与长度。
+// CommonMark：闭合行须为 ≥ 开口数的同字符纯行——因此 4 反引号外层不被内层 3 反引号提前闭合（票 16）。
+interface Fence {
+  ch: '`' | '~'
+  len: number
+}
+function fenceCloses(line: string, f: Fence): boolean {
+  const re = f.ch === '`' ? new RegExp(`^\`{${f.len},}$`) : new RegExp(`^~{${f.len},}$`)
+  return re.test(line)
+}
+function fenceOpen(line: string): Fence | null {
+  const m = line.match(/^(`+|~+)/)
+  if (!m || m[1].length < 3) return null
+  return { ch: m[1][0] as '`' | '~', len: m[1].length }
 }
 
 /**
@@ -53,16 +63,17 @@ function extractHeadingsToken(content: string): Heading[] {
 
 function extractHeadingsRegex(content: string): Heading[] {
   const out: Heading[] = []
-  let fenceChar: '`' | '~' | null = null
+  let fence: Fence | null = null
 
   for (const raw of content.split(/\r?\n/)) {
     const line = raw.trim()
-    if (fenceChar) {
-      if (fenceCloses(line, fenceChar)) fenceChar = null
+    if (fence) {
+      if (fenceCloses(line, fence)) fence = null
       continue
     }
-    if (FENCE_OPEN_RE.test(line)) {
-      fenceChar = line[0] as '`' | '~'
+    const f = fenceOpen(line)
+    if (f) {
+      fence = f
       continue
     }
     const m = line.match(/^(#{1,6})\s+(.+)$/)
@@ -117,21 +128,24 @@ const SNIPPET_MAX = 140
 export function findBodySnippet(content: string, query: string): string | null {
   const q = query.trim().toLowerCase()
   if (!q) return null
-  let fenceChar: '`' | '~' | null = null
+  let fence: Fence | null = null
 
   for (const raw of content.split(/\r?\n/)) {
     const line = raw.trim()
-    if (fenceChar) {
-      if (fenceCloses(line, fenceChar)) {
-        fenceChar = null
+    if (fence) {
+      if (fenceCloses(line, fence)) {
+        fence = null
         continue
       }
       // 围栏内正文（代码）可搜
-    } else if (FENCE_OPEN_RE.test(line)) {
-      fenceChar = line[0] as '`' | '~'
-      continue
     } else if (/^#{1,6}\s+/.test(line)) {
       continue // 标题行不算正文
+    } else {
+      const f = fenceOpen(line)
+      if (f) {
+        fence = f
+        continue
+      }
     }
     if (line.toLowerCase().includes(q)) {
       return line.length > SNIPPET_MAX ? line.slice(0, SNIPPET_MAX) + '…' : line

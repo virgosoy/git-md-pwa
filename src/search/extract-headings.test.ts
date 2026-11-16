@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractHeadings } from './index'
+import { extractHeadings, findBodySnippet } from './index'
 
 // S1 · 标题抽取：H1-H6 全量；代码块围栏内不算；known-good 字面量
 // S5 · token 流默认（票 15）：markdown-it 容器（引用/列表）内标题也能抽出；regex 模式保留旧行为
@@ -69,6 +69,50 @@ describe('extractHeadings', () => {
     const content = ['> #### 💛 grill-me (skill)', '', '- ## 列表内标题'].join('\n')
     // 显式传 'regex' 走旧逐行正则
     expect(extractHeadings(content, 'regex')).toEqual([])
+  })
+
+  it('regex 回退：4反引号外层围栏不被内层3反引号行提前闭合，闭合后裸标题恢复（票16）', () => {
+    const content = [
+      '````md', // 外层 4 反引号开口
+      '```', // 内层 3 反引号行：数量 < 外层，不能闭合外层围栏
+      '正文', // 仍在外层围栏内
+      '````', // 4 反引号闭合外层（旧代码误当新开口）
+      '#### 💛 grill-me (skill)' // 闭合后是真标题（旧代码被吞）
+    ].join('\n')
+    expect(extractHeadings(content, 'regex')).toEqual([
+      { level: 4, text: '💛 grill-me (skill)' }
+    ])
+  })
+
+  it('regex 回退：4反引号外层围栏内嵌 3反引号+4反引号 双重内层，闭合匹配外层（票16 实链）', () => {
+    const content = [
+      '````md', // 外层 4 反引号开口
+      '```js', // 内层 3 反引号开口
+      'const x = 1',
+      '```', // 内层 3 反引号闭合（不应闭合外层）
+      '仍在外层',
+      '````', // 外层 4 反引号闭合
+      '#### karpathy-guidelines', // 真标题
+      '正文'
+    ].join('\n')
+    expect(extractHeadings(content, 'regex')).toEqual([
+      { level: 4, text: 'karpathy-guidelines' }
+    ])
+  })
+
+  it('regex 回退：同样场景下 findBodySnippet 围栏跳桶一致（票16）', () => {
+    // 4反引号外层正确闭合：其后的标题行不算正文 → 摘录为 null
+    // 修复前：内层3反引号误闭合外层 → 4反引号成新开口 → 标题行被圈进错误围栏当代码可搜
+    const content = [
+      '````md',
+      '```js',
+      'x = 1',
+      '```', // 若误闭合外层，此处开始错位
+      '外层继续',
+      '````', // 外层正确闭合（修复后）；新开口（修复前）
+      '#### 目标标题' // 围栏外的标题行，不算正文
+    ].join('\n')
+    expect(findBodySnippet(content, '目标')).toBeNull()
   })
 
   it('围栏内标题 token 流也不抽（语义与正则一致）', () => {
