@@ -25,7 +25,7 @@ describe('settingsStore', () => {
     expect(s.lastPromptedVersion).toBe('')
   })
 
-  it('保存后重新加载，往返保留 token/owner/repo/autoSync/renderMath/renderMermaid/tocPinned', async () => {
+  it('保存后重新加载，往返保留 token/owner/repo/autoSync/renderMath/renderMermaid/betterHeadingExtract/tocPinned', async () => {
     await saveSettings({
       token: 'ghp_test_dummy',
       owner: 'me',
@@ -33,6 +33,7 @@ describe('settingsStore', () => {
       autoSync: false,
       renderMath: true,
       renderMermaid: true,
+      betterHeadingExtract: false,
       tocPinned: true,
       lastPromptedVersion: 'v0.0.1+aaa'
     })
@@ -44,6 +45,7 @@ describe('settingsStore', () => {
       autoSync: false,
       renderMath: true,
       renderMermaid: true,
+      betterHeadingExtract: false,
       tocPinned: true,
       lastPromptedVersion: 'v0.0.1+aaa'
     })
@@ -67,6 +69,7 @@ describe('settingsStore', () => {
       autoSync: false,
       renderMath: false,
       renderMermaid: false,
+      betterHeadingExtract: true,
       tocPinned: false,
       lastPromptedVersion: ''
     })
@@ -101,38 +104,23 @@ describe('settingsStore', () => {
   it('isConfigured：owner+repo 非空即视为已配置（公开库可不填令牌）', () => {
     expect(
       isConfigured({
-        token: '',
+        ...DEFAULT_SETTINGS,
         owner: 'me',
-        repo: 'fixtures',
-        autoSync: true,
-        renderMath: false,
-        renderMermaid: false,
-        tocPinned: false,
-        lastPromptedVersion: ''
+        repo: 'fixtures'
       })
     ).toBe(true)
     expect(
       isConfigured({
+        ...DEFAULT_SETTINGS,
         token: 'x',
-        owner: '',
-        repo: 'fixtures',
-        autoSync: true,
-        renderMath: false,
-        renderMermaid: false,
-        tocPinned: false,
-        lastPromptedVersion: ''
+        repo: 'fixtures'
       })
     ).toBe(false)
     expect(
       isConfigured({
+        ...DEFAULT_SETTINGS,
         token: 'x',
-        owner: 'me',
-        repo: '',
-        autoSync: true,
-        renderMath: false,
-        renderMermaid: false,
-        tocPinned: false,
-        lastPromptedVersion: ''
+        owner: 'me'
       })
     ).toBe(false)
     expect(isConfigured(DEFAULT_SETTINGS)).toBe(false)

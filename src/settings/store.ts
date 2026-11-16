@@ -19,6 +19,8 @@ export interface AppSettings {
   renderMath: boolean
   /** 渲染 Mermaid 图表，默认关；关/错=围栏当普通代码块 */
   renderMermaid: boolean
+  /** 标题抽取用 markdown-it token 流（默认开；关=旧逐行正则）。更快但漏容器内标题 */
+  betterHeadingExtract: boolean
   /** 单篇 TOC 固定偏好：开=点目录条目后面板保持展开；全局存储，默认关 */
   tocPinned: boolean
   /** 最近已提示过的新版本串（Q8：同版本只提示一次；设备本地） */
@@ -32,6 +34,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoSync: true,
   renderMath: false,
   renderMermaid: false,
+  betterHeadingExtract: true,
   tocPinned: false,
   lastPromptedVersion: ''
 }

@@ -52,8 +52,11 @@ export function App() {
   const [files, setFiles] = useState<StoredFile[]>([])
   const [query, setQuery] = useState('')
 
-  // 标题+正文索引：内容变化才重算（591 篇×正文解析，不同步不重复跑）
-  const index = useMemo(() => buildIndex(files), [files])
+  // 标题+正文索引：内容或标题抽取模式（票 15 开关）变化才重算（591 篇×正文解析，不同步不重复跑）
+  const index = useMemo(
+    () => buildIndex(files, settings?.betterHeadingExtract === false ? 'regex' : 'token'),
+    [files, settings?.betterHeadingExtract]
+  )
   const hits = useMemo(() => searchNotes(index, query), [index, query])
   const [readerTick, setReaderTick] = useState(0)
 

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { extractHeadings } from './index'
 
 // S1 · 标题抽取：H1-H6 全量；代码块围栏内不算；known-good 字面量
+// S5 · token 流默认（票 15）：markdown-it 容器（引用/列表）内标题也能抽出；regex 模式保留旧行为
 
 describe('extractHeadings', () => {
   it('抽取 H1-H6 及文本 trim', () => {
@@ -43,5 +44,35 @@ describe('extractHeadings', () => {
 
   it('CRLF 与尾部 # 正常处理', () => {
     expect(extractHeadings('## 标题\r\n正文\r\n')).toEqual([{ level: 2, text: '标题' }])
+  })
+
+  // —— 票 15 ——
+
+  it('token 流（默认）：引用块/列表内标题也抽出（HTML 语义=渲染器一致）', () => {
+    const content = [
+      '前文',
+      '',
+      '> #### 💛 grill-me (skill)',
+      '',
+      '- ## 列表内标题',
+      '',
+      '1. ### 有序列表标题'
+    ].join('\n')
+    expect(extractHeadings(content)).toEqual([
+      { level: 4, text: '💛 grill-me (skill)' },
+      { level: 2, text: '列表内标题' },
+      { level: 3, text: '有序列表标题' }
+    ])
+  })
+
+  it('regex 模式：保留旧行为，容器内标题不抽（回退开关语义）', () => {
+    const content = ['> #### 💛 grill-me (skill)', '', '- ## 列表内标题'].join('\n')
+    // 显式传 'regex' 走旧逐行正则
+    expect(extractHeadings(content, 'regex')).toEqual([])
+  })
+
+  it('围栏内标题 token 流也不抽（语义与正则一致）', () => {
+    const content = ['```md', '# 不是标题', '```', '', '# 真标题'].join('\n')
+    expect(extractHeadings(content)).toEqual([{ level: 1, text: '真标题' }])
   })
 })

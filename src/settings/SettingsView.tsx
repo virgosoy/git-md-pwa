@@ -129,6 +129,16 @@ export function SettingsView({
         <span>渲染 Mermaid 图表（默认关闭；关或写错时显示代码块）</span>
       </label>
 
+      <label class="field field--row">
+        <input
+          type="checkbox"
+          checked={form.betterHeadingExtract}
+          disabled={!loaded}
+          onChange={bindCheck('betterHeadingExtract')}
+        />
+        <span>检索用渲染器语义提取标题（默认开启；引号/列表内的标题也能搜到。若手机端较慢可关回旧算法）</span>
+      </label>
+
       {onCheckUpdates && (
         <div class="field">
           <span class="field__label">应用版本与更新</span>
