@@ -40,6 +40,10 @@ export function App() {
   const [findOpen, setFindOpen] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const scrollTimer = useRef<number | undefined>(undefined)
+  const mainRef = useRef<HTMLElement>(null)
+  // 主页搜索滚动复位：仅「空查询（全量列表）→ 有查询（结果列表）」这一下翻转时回顶，
+  // 否则滚到列表底部再搜，结果列表仍停留在底部看不到开头；正在结果里增删字不改位置。
+  const prevQueryEmpty = useRef(true)
 
   // 同步状态（票 04）
   const settingsRef = useRef<AppSettings | null>(null)
@@ -60,6 +64,14 @@ export function App() {
   const hits = useMemo(() => searchNotes(index, query), [index, query])
   const [readerTick, setReaderTick] = useState(0)
 
+  useEffect(() => {
+    const nowEmpty = query.trim() === ''
+    if (!nowEmpty && prevQueryEmpty.current) {
+      const main = mainRef.current
+      if (main) main.scrollTop = 0
+    }
+    prevQueryEmpty.current = nowEmpty
+  }, [query])
   // 资源加载器：图/PDF 按需拉取（先查缓存再网络，缓存为 dataURL）。
   // 依赖只收敛到 token/owner/repo：这三者变化才重建 reader（开关类设置改了不应重装资源/重建 shadow）。
   const { token: assetToken, owner: assetOwner, repo: assetRepo } = settings ?? {}
@@ -240,7 +252,7 @@ export function App() {
 
       <SyncBanner status={syncStatus} fail={syncFail} lastSyncedAt={lastSyncedAt} />
 
-      <main class={current ? 'app__main app__main--flush' : 'app__main'}>
+      <main ref={mainRef} class={current ? 'app__main app__main--flush' : 'app__main'}>
         {current ? (
           <ReaderView
             key={current.path}

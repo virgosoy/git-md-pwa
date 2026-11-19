@@ -104,4 +104,45 @@ describe('首页全局搜索（集成）', () => {
     expect(r.snippets.join('')).toContain('今天下雨了')
     expect(c.textContent).not.toContain('docs/')
   })
+
+  it('滚到列表底部后输入查询 → 进入结果列表时滚动容器回顶', async () => {
+    const c = document.createElement('div')
+    document.body.appendChild(c)
+    render(<App />, c)
+    await flushFrames()
+
+    const main = c.querySelector('.app__main') as HTMLElement
+    main.scrollTop = 999
+    expect(main.scrollTop).toBe(999)
+
+    setSearch(c, '排障')
+    await flushFrames()
+
+    expect(c.querySelectorAll('.search-item').length).toBe(1)
+    expect(main.scrollTop).toBe(0)
+  })
+
+  it('已在结果列表里增删字 → 保持滚动位置；清空不强制回顶', async () => {
+    const c = document.createElement('div')
+    document.body.appendChild(c)
+    render(<App />, c)
+    await flushFrames()
+
+    const main = c.querySelector('.app__main') as HTMLElement
+    main.scrollTop = 999
+
+    // 已在结果列表里继续增删字：保持在当前位置，不回顶
+    setSearch(c, '排障')
+    await flushFrames()
+    main.scrollTop = 500
+    setSearch(c, '部署')
+    await flushFrames()
+    expect(main.scrollTop).toBe(500)
+
+    // 清空恢复全量列表：不强制回顶
+    setSearch(c, '')
+    await flushFrames()
+    expect(main.scrollTop).toBe(500)
+  })
 })
+
