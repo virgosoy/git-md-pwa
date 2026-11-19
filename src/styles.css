@@ -291,7 +291,7 @@ body {
   font-size: 0.9rem;
 }
 
-/* 全局标题搜索 */
+/* 全局标题搜索（吸顶：滚到列表下方仍可直达，无需拉回顶部） */
 .search-input {
   width: 100%;
   appearance: none;
@@ -302,6 +302,12 @@ body {
   padding: 0.55rem 0.7rem;
   font-size: 0.95rem;
   margin-bottom: 0.6rem;
+  /* 吸顶：滚动列表时搜索框始终可见；z-index 让它盖住下方滚过的内容 */
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  /* 细底边：把悬浮的搜索框与列表隔开 */
+  box-shadow: 0 1px 0 0 #3f3f46;
 }
 
 .search-input:focus {
