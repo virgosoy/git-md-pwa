@@ -15,7 +15,8 @@ vi.mock('virtual:pwa-register/preact', () => ({
   })
 }))
 
-// S3 · 首页全局搜索（集成）：输入片段过滤列表，条目带「标题/文件/正文」标签，离线可搜
+// S3 · 首页全局搜索（集成）：输入片段过滤列表；展示 =「文件名恒为主行 + 标题逐条 H 徽标行
+// + 目录 + 正文摘录」，离线可搜。断言按新结构走（.search-item__name / __heading / __snippet）。
 
 function file(path: string, content: string) {
   return { path, sha: `sha-${path}`, content, size: content.length, status: 'ok' as const }
@@ -33,6 +34,14 @@ function setSearch(container: HTMLElement, value: string): void {
   input.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
+/** 第一张结果卡片的结构快照：主行名、各标题行、各正文摘录 */
+function firstResult(container: HTMLElement): { name: string; headings: string[]; snippets: string[] } {
+  const name = container.querySelector('.search-item__name')?.textContent ?? ''
+  const headings = [...container.querySelectorAll('.search-item__heading')].map((el) => el.textContent ?? '')
+  const snippets = [...container.querySelectorAll('.search-item__snippet')].map((el) => el.textContent ?? '')
+  return { name, headings, snippets }
+}
+
 describe('首页全局搜索（集成）', () => {
   beforeEach(async () => {
     await wipeDb()
@@ -45,7 +54,7 @@ describe('首页全局搜索（集成）', () => {
     vi.unstubAllGlobals()
   })
 
-  it('输入标题片段 → 仅显示命中项，带「标题 H2」标签', async () => {
+  it('输入标题片段 → 仅显示命中项：文件名主行 + H 徽标标题行', async () => {
     const c = document.createElement('div')
     document.body.appendChild(c)
     render(<App />, c)
@@ -55,12 +64,12 @@ describe('首页全局搜索（集成）', () => {
     setSearch(c, '排障')
     await flushFrames()
 
-    expect(c.textContent).toContain('部署排障')
-    expect(c.textContent).toContain('标题 H2')
+    expect(c.querySelectorAll('.search-item').length).toBe(1)
+    expect(firstResult(c)).toEqual({ name: '归档', headings: ['H2部署排障'], snippets: [] })
     expect(c.textContent).not.toContain('README.md')
   })
 
-  it('标题与路径双命中 → 「文件」与「标题 H1」标签并存；清空恢复全量', async () => {
+  it('文件名与标题双命中 → 主行与标题行各自独立展示；清空恢复全量', async () => {
     const c = document.createElement('div')
     document.body.appendChild(c)
     render(<App />, c)
@@ -69,16 +78,17 @@ describe('首页全局搜索（集成）', () => {
     setSearch(c, '归档')
     await flushFrames()
 
-    expect(c.textContent).toContain('文件')
-    expect(c.textContent).toContain('标题 H1')
-    expect(c.textContent).toContain('docs/归档.md')
+    const r = firstResult(c)
+    expect(r.name).toBe('归档')
+    expect(r.headings).toContain('H1归档记录')
+    expect(c.textContent).toContain('docs/')
 
     setSearch(c, '')
     await flushFrames()
     expect(c.textContent).toContain('README.md')
   })
 
-  it('正文命中 → 带「正文」标签与摘录，不含标题标签', async () => {
+  it('正文命中 → 文件名主行 + 正文摘录，无标题行', async () => {
     const c = document.createElement('div')
     document.body.appendChild(c)
     render(<App />, c)
@@ -87,10 +97,11 @@ describe('首页全局搜索（集成）', () => {
     setSearch(c, '下雨')
     await flushFrames()
 
-    expect(c.textContent).toContain('正文')
-    expect(c.textContent).toContain('今天下雨了')
-    expect(c.textContent).toContain('README.md')
-    expect(c.textContent).not.toContain('标题')
-    expect(c.textContent).not.toContain('docs/归档.md')
+    expect(c.querySelectorAll('.search-item').length).toBe(1)
+    const r = firstResult(c)
+    expect(r.name).toBe('README')
+    expect(r.headings).toEqual([])
+    expect(r.snippets.join('')).toContain('今天下雨了')
+    expect(c.textContent).not.toContain('docs/')
   })
 })

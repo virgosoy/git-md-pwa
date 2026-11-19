@@ -286,7 +286,7 @@ export function App() {
               onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
             />
             {query.trim() ? (
-              <SearchResults hits={hits} onOpen={(p) => void openNote(p)} />
+              <SearchResults hits={hits} query={query} onOpen={(p) => void openNote(p)} />
             ) : (
               <>
                 {recent.length > 0 && (

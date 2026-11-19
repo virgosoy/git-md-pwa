@@ -368,16 +368,26 @@ body {
   gap: 0.2rem;
 }
 
-.tag {
+.search-item__name {
+  font-weight: 600;
+}
+
+.search-item__heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  min-width: 0;
+}
+
+.search-item__level {
   font-size: 0.7rem;
+  line-height: 1;
   color: var(--accent);
   background: rgba(63, 131, 248, 0.12);
   border-radius: 0.3rem;
-  padding: 0.1rem 0.4rem;
-}
-
-.search-item__text {
-  font-weight: 600;
+  padding: 0.15rem 0.35rem;
+  flex-shrink: 0;
 }
 
 .search-item__path {
@@ -390,4 +400,11 @@ body {
   color: var(--muted);
   line-height: 1.4;
   word-break: break-all;
+}
+
+mark.search-hit {
+  background: rgba(63, 131, 248, 0.35);
+  color: var(--fg);
+  border-radius: 0.15rem;
+  padding: 0 0.05rem;
 }

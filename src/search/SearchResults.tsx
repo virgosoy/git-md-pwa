@@ -1,40 +1,96 @@
-// 搜索命中列表：区分「标题/文件」命中来源，点了进阅读器。
+// 搜索命中列表：文件名恒为主行（命中段高亮），标题行逐条展示（H 徽标 + 标题文本），
+// 目录与正文摘录随命中显示；命中的子串统一包 <mark class="search-hit">。
+// 高亮切段是纯函数 highlightSegments（独立单测），组件只做渲染。
 
 import type { SearchHit } from './index'
 
-const JOIN = '；'
-
 export interface SearchResultsProps {
   hits: SearchHit[]
+  query: string
   onOpen: (path: string) => void
 }
 
-export function SearchResults({ hits, onOpen }: SearchResultsProps) {
+/**
+ * 把 text 里所有命中的子串（大小写不敏感）切成 [{text, hit}] 段，未命中的部分原样保留。
+ * 空查询返回整段非命中；重叠命中按推进游标逐个消费（`aaaa` + `aa` → `[aa][aa]`）。
+ */
+export function highlightSegments(text: string, query: string): Array<{ text: string; hit: boolean }> {
+  const q = query.trim().toLowerCase()
+  if (!q) return text ? [{ text, hit: false }] : []
+  const lower = text.toLowerCase()
+  const out: Array<{ text: string; hit: boolean }> = []
+  let i = 0
+  while (i < lower.length) {
+    const idx = lower.indexOf(q, i)
+    if (idx === -1) {
+      if (i < text.length) out.push({ text: text.slice(i), hit: false })
+      break
+    }
+    if (idx > i) out.push({ text: text.slice(i, idx), hit: false })
+    out.push({ text: text.slice(idx, idx + q.length), hit: true })
+    i = idx + q.length
+  }
+  if (out.length === 0 && text) out.push({ text, hit: false })
+  return out
+}
+
+function Highlight({ text, query }: { text: string; query: string }) {
+  return (
+    <>
+      {highlightSegments(text, query).map((s, i) =>
+        s.hit ? (
+          <mark key={i} class="search-hit">
+            {s.text}
+          </mark>
+        ) : (
+          <span key={i}>{s.text}</span>
+        )
+      )}
+    </>
+  )
+}
+
+/** 把镜像路径拆成「文件名 stem（去 .md）」与「目录（含尾斜杠）」；无目录返回空串 */
+function stemAndDir(path: string): { stem: string; dir: string } {
+  const slash = path.lastIndexOf('/')
+  const file = slash === -1 ? path : path.slice(slash + 1)
+  return { stem: file.replace(/\.md$/i, ''), dir: slash === -1 ? '' : path.slice(0, slash + 1) }
+}
+
+export function SearchResults({ hits, query, onOpen }: SearchResultsProps) {
   if (hits.length === 0) {
     return <p class="app__hint">没有匹配。</p>
   }
   return (
     <ul class="recent__list">
-      {hits.map((h) => (
-        <li key={h.path}>
-          <button class="recent__item search-item" onClick={() => onOpen(h.path)}>
-            {h.fileMatch && <span class="tag">文件</span>}
-            {h.headingHits.length > 0 && (
-              <span class="tag">{h.headingHits.map((hh) => `标题 H${hh.level}`).join(JOIN)}</span>
-            )}
-            {h.bodyMatch && <span class="tag">正文</span>}
-            <span class="search-item__text">
-              {h.headingHits.length > 0
-                ? h.headingHits.map((hh) => hh.text).join(JOIN)
-                : h.bodySnippet ?? h.path}
-            </span>
-            <span class="search-item__path">{h.path}</span>
-            {h.bodyMatch && h.bodySnippet && h.headingHits.length > 0 && (
-              <span class="search-item__snippet">…{h.bodySnippet}…</span>
-            )}
-          </button>
-        </li>
-      ))}
+      {hits.map((h) => {
+        const { stem, dir } = stemAndDir(h.path)
+        return (
+          <li key={h.path}>
+            <button class="recent__item search-item" onClick={() => onOpen(h.path)}>
+              <span class="search-item__name">
+                <Highlight text={stem} query={query} />
+              </span>
+              {h.headingHits.map((hh, i) => (
+                <span class="search-item__heading" key={i}>
+                  <span class="search-item__level">H{hh.level}</span>
+                  <Highlight text={hh.text} query={query} />
+                </span>
+              ))}
+              {dir && (
+                <span class="search-item__path">
+                  <Highlight text={dir} query={query} />
+                </span>
+              )}
+              {h.bodyMatch && h.bodySnippet && (
+                <span class="search-item__snippet">
+                  …<Highlight text={h.bodySnippet} query={query} />…
+                </span>
+              )}
+            </button>
+          </li>
+        )
+      })}
     </ul>
   )
 }
