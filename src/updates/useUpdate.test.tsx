@@ -58,6 +58,29 @@ function Host() {
 
 let container: HTMLElement
 
+/** 假 SW 注册：模拟「update() 后新 worker 安装 → installed → waiting」的真实时序 */
+class FakeWorker extends EventTarget {
+  state: ServiceWorkerState
+  constructor(state: ServiceWorkerState = 'installing') {
+    super()
+    this.state = state
+  }
+  finish(): void {
+    this.state = 'installed'
+    this.dispatchEvent(new Event('statechange'))
+  }
+}
+
+class FakeReg extends EventTarget {
+  waiting: FakeWorker | null = null
+  installing: FakeWorker | null = null
+  update = vi.fn(async () => {})
+}
+
+function registerReg(reg: FakeReg): void {
+  sw.onRegisteredSW?.('/git-md-pwa/sw.js', reg as unknown as ServiceWorkerRegistration)
+}
+
 function mountHost(): void {
   container = document.createElement('div')
   document.body.appendChild(container)
@@ -145,6 +168,9 @@ describe('useUpdate', () => {
   it('「刷新」持久化已提示版本并调用 updateSW（触发新版接管 + reload）', async () => {
     await saveSettings({ lastPromptedVersion: OLD })
     mountHost()
+    const reg = new FakeReg()
+    reg.waiting = new FakeWorker('installed')
+    registerReg(reg)
     sw.onNeedRefresh?.()
     await flush()
     sel('apply').click()
@@ -153,9 +179,58 @@ describe('useUpdate', () => {
     expect((await loadSettings()).lastPromptedVersion).toBe(LIVE)
   })
 
+  it('手动检查：新 SW 装到 waiting 后才弹横幅（不抢在安装前）', async () => {
+    await saveSettings({ lastPromptedVersion: OLD })
+    mountHost()
+    const reg = new FakeReg()
+    const worker = new FakeWorker()
+    reg.update = vi.fn(async () => {
+      reg.installing = worker
+    })
+    registerReg(reg)
+    sel('check').click()
+    await flush()
+    // update() 已返回但 worker 还在 installing：此时不能弹横幅（点刷新会无 SW 可接管）
+    expect(sel('banner').textContent).toBe('none')
+
+    worker.finish()
+    reg.installing = null
+    reg.waiting = worker
+    await flush()
+    expect(sel('banner').textContent).toBe(LIVE)
+  })
+
+  it('「刷新」时没有 waiting SW：不调 updateSW，也不吞掉横幅（不许假装刷新）', async () => {
+    await saveSettings({ lastPromptedVersion: OLD })
+    mountHost()
+    sw.onNeedRefresh?.()
+    await flush()
+    expect(sel('banner').textContent).toBe(LIVE)
+    sel('apply').click()
+    await flush()
+    expect(sw.updateSW).not.toHaveBeenCalled()
+    expect(sel('banner').textContent).toBe(LIVE)
+  })
+
+  it('手动检查：线上版本变了但 SW 无新 worker → 不弹横幅，提示更新包未就绪', async () => {
+    stubLive(LIVE) // LIVE ≠ CURRENT_APP_VERSION，旧逻辑会据此弹横幅
+    await saveSettings({ lastPromptedVersion: OLD })
+    mountHost()
+    const reg = new FakeReg() // update() 返回，但没有 installing/waiting
+    registerReg(reg)
+    sel('check').click()
+    await flush()
+    expect(sel('banner').textContent).toBe('none')
+    expect(sel('note').textContent).toBe('线上版本与本机不同，暂无可安装的更新包')
+    expect(reg.update).toHaveBeenCalledTimes(1)
+  })
+
   it('手动检查：同版本已提示也照弹（verbose 逃生舱）', async () => {
     await saveSettings({ lastPromptedVersion: LIVE }) // 已忽略过 v0.0.2+zzz
     mountHost()
+    const reg = new FakeReg()
+    reg.waiting = new FakeWorker('installed')
+    registerReg(reg)
     sel('check').click()
     await flush()
     expect(sel('banner').textContent).toBe(LIVE)
