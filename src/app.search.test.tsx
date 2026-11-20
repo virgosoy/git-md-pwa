@@ -105,7 +105,7 @@ describe('首页全局搜索（集成）', () => {
     expect(c.textContent).not.toContain('docs/')
   })
 
-  it('滚到列表底部后输入查询 → 进入结果列表时滚动容器回顶', async () => {
+  it('滚到列表底部后输入查询 → 进入结果列表时回顶', async () => {
     const c = document.createElement('div')
     document.body.appendChild(c)
     render(<App />, c)
@@ -122,7 +122,7 @@ describe('首页全局搜索（集成）', () => {
     expect(main.scrollTop).toBe(0)
   })
 
-  it('已在结果列表里增删字 → 保持滚动位置；清空不强制回顶', async () => {
+  it('结果列表里增删字 → 保持滚动位置不动', async () => {
     const c = document.createElement('div')
     document.body.appendChild(c)
     render(<App />, c)
@@ -131,18 +131,32 @@ describe('首页全局搜索（集成）', () => {
     const main = c.querySelector('.app__main') as HTMLElement
     main.scrollTop = 999
 
-    // 已在结果列表里继续增删字：保持在当前位置，不回顶
     setSearch(c, '排障')
     await flushFrames()
     main.scrollTop = 500
     setSearch(c, '部署')
     await flushFrames()
     expect(main.scrollTop).toBe(500)
+  })
 
-    // 清空恢复全量列表：不强制回顶
+  it('清空搜索结果 → 回到进入搜索前的列表位置', async () => {
+    const c = document.createElement('div')
+    document.body.appendChild(c)
+    render(<App />, c)
+    await flushFrames()
+
+    const main = c.querySelector('.app__main') as HTMLElement
+    main.scrollTop = 999
+
+    setSearch(c, '排障')
+    await flushFrames()
+    expect(main.scrollTop).toBe(0)
+
+    // 清空（等价点 x）→ 恢复全量列表并回到进入搜索前的位置
     setSearch(c, '')
     await flushFrames()
-    expect(main.scrollTop).toBe(500)
+    expect(c.textContent).toContain('README.md')
+    expect(main.scrollTop).toBe(999)
   })
 })
 

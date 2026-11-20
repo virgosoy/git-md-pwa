@@ -41,9 +41,13 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null)
   const scrollTimer = useRef<number | undefined>(undefined)
   const mainRef = useRef<HTMLElement>(null)
-  // 主页搜索滚动复位：仅「空查询（全量列表）→ 有查询（结果列表）」这一下翻转时回顶，
-  // 否则滚到列表底部再搜，结果列表仍停留在底部看不到开头；正在结果里增删字不改位置。
+  // 主页搜索的滚动位置管理（列表与结果共用 .app__main 这一个滚动容器）：
+  // - 空 → 有查询：结果从头看（回顶），同时记住进搜索前的列表位置；
+  // - 有查询 → 空：清空/× 后回到那个列表位置；
+  // - 非空 → 非空（结果里增删字）：保持不动。
   const prevQueryEmpty = useRef(true)
+  // 进搜索前的列表 scrollTop；必须在渲染切换前于 onInput 里捕获（结果列表更短，切换后会被夹小）
+  const listScrollTop = useRef(0)
 
   // 同步状态（票 04）
   const settingsRef = useRef<AppSettings | null>(null)
@@ -66,12 +70,26 @@ export function App() {
 
   useEffect(() => {
     const nowEmpty = query.trim() === ''
+    const main = mainRef.current
     if (!nowEmpty && prevQueryEmpty.current) {
-      const main = mainRef.current
+      // 空 → 有查询：结果从头看
       if (main) main.scrollTop = 0
+    } else if (nowEmpty && !prevQueryEmpty.current) {
+      // 有查询 → 空：回到进入搜索前的列表位置
+      if (main) main.scrollTop = listScrollTop.current
     }
+    // 非空 → 非空（结果里增删字）：保持位置不动
     prevQueryEmpty.current = nowEmpty
   }, [query])
+
+  /** 搜索框输入：进搜索前先记住列表位置（渲染切换后再读会被浏览器夹小） */
+  function handleQueryInput(e: Event): void {
+    const next = (e.target as HTMLInputElement).value
+    if (query.trim() === '' && next.trim() !== '') {
+      listScrollTop.current = mainRef.current?.scrollTop ?? 0
+    }
+    setQuery(next)
+  }
   // 资源加载器：图/PDF 按需拉取（先查缓存再网络，缓存为 dataURL）。
   // 依赖只收敛到 token/owner/repo：这三者变化才重建 reader（开关类设置改了不应重装资源/重建 shadow）。
   const { token: assetToken, owner: assetOwner, repo: assetRepo } = settings ?? {}
@@ -295,7 +313,7 @@ export function App() {
               type="search"
               placeholder="搜索标题 / 文件名 / 正文"
               value={query}
-              onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+              onInput={handleQueryInput}
             />
             {query.trim() ? (
               <SearchResults hits={hits} query={query} onOpen={(p) => void openNote(p)} />
