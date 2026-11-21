@@ -31,10 +31,11 @@ export interface MirrorDiff {
   remove: string[]
 }
 
-const META_KEY = 'meta'
+/** meta 表里同步元数据的主键（存储统计也读它，故导出而非私有） */
+export const MIRROR_META_KEY = 'meta'
 
 export async function saveMirrorMeta(meta: MirrorMeta): Promise<void> {
-  await withStore(STORE_META, (s) => s.put({ key: META_KEY, ...meta }))
+  await withStore(STORE_META, (s) => s.put({ key: MIRROR_META_KEY, ...meta }))
 }
 
 interface MetaRecord extends MirrorMeta {
@@ -42,7 +43,7 @@ interface MetaRecord extends MirrorMeta {
 }
 
 export async function loadMirrorMeta(): Promise<MirrorMeta | null> {
-  const rec = await withStore<MetaRecord | undefined>(STORE_META, (s) => s.get(META_KEY))
+  const rec = await withStore<MetaRecord | undefined>(STORE_META, (s) => s.get(MIRROR_META_KEY))
   return rec ? { commitSha: rec.commitSha, syncedAt: rec.syncedAt } : null
 }
 

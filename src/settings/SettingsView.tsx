@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks'
 import type { AppSettings } from './store'
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from './store'
 import { formatAgo } from '../updates/format'
+import { StorageUsage } from '../storage/StorageUsage'
 
 /** AppSettings 中的布尔开关键（bindCheck 只对这些键开放） */
 type BooleanKey = { [K in keyof AppSettings]: AppSettings[K] extends boolean ? K : never }[keyof AppSettings]
@@ -153,6 +154,8 @@ export function SettingsView({
           {latestNote && <p class="settings__saved">{latestNote}</p>}
         </div>
       )}
+
+      <StorageUsage />
 
       <div class="settings__actions">
         <button type="submit" class="btn btn--primary" disabled={!loaded}>

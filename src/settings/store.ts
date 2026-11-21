@@ -39,23 +39,24 @@ export const DEFAULT_SETTINGS: AppSettings = {
   lastPromptedVersion: ''
 }
 
-const KEY = 'app'
+/** settings 表里设置记录的主键（存储统计也读它，故导出而非私有） */
+export const SETTINGS_KEY = 'app'
 
 export async function loadSettings(): Promise<AppSettings> {
   const raw = await withStore<Partial<AppSettings> | undefined>(STORE_SETTINGS, (s) =>
-    s.get(KEY)
+    s.get(SETTINGS_KEY)
   )
   return { ...DEFAULT_SETTINGS, ...(raw ?? {}) }
 }
 
 export async function saveSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
   const next = { ...(await loadSettings()), ...patch }
-  await withStore(STORE_SETTINGS, (s) => s.put(next, KEY))
+  await withStore(STORE_SETTINGS, (s) => s.put(next, SETTINGS_KEY))
   return next
 }
 
 export async function clearSettings(): Promise<void> {
-  await withStore(STORE_SETTINGS, (s) => s.delete(KEY))
+  await withStore(STORE_SETTINGS, (s) => s.delete(SETTINGS_KEY))
 }
 
 export function isConfigured(s: AppSettings): boolean {
