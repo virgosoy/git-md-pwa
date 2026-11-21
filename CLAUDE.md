@@ -23,6 +23,7 @@ This repository is **public** (GitHub Pages hosting requires it). It must never 
 ### 架构（模块→责任）
 
 - `src/idb.ts` — **IndexedDB schema 唯一所有者**。DB `md-mirror`（v4）：`settings`/`mirror`(path)/`meta`(key)/`reading`(path)/`assets`(path)。加存储表 → 只改这一处 + `DB_VERSION` 递增。
+- `src/lib/bytes.ts` — 字符串字节估算（`stringBytes`）；存储统计与清空镜像共用同一口径，放中立模块避免 storage ↔ mirror 循环依赖。
 - `src/github/client.ts` — GitHub REST 客户端：trees 拉树、contents raw 取原文/字节。**绝不发送 `X-GitHub-Api-Version` 头**（浏览器 CORS 预检会失败）；空令牌走匿名只读。
 - `src/mirror/{tree,store,mirror}.ts` — 镜像策略（只 `.md`、>10MB 标 `too-large`、增量 diff）、持久化、**两阶段编排**（先全部网络拉取、全成功才写库 → 失败不破坏旧镜像，这是离线可用的根基）。
 - `src/reader/{render,mermaid,links,reading,ReaderView}.tsx` — markdown-it 渲染（`createMd(opts)` 工厂：可选注入 KaTeX 公式引擎 `math` + 开启 Mermaid 围栏宿主块 `mermaid`；表格+highlight，**原始 HTML 透传**，ADR-0002/0003）；每篇笔记进**独立 Shadow DOM**（样式不外漏、innerHTML 的 script 天然不执行）；内链分类/路径解析、阅读位置+最近、资源装配；`mermaid.ts` 按需 `import('mermaid')` 把放 `data-mermaid` 宿主块渲染成自包含 SVG 注入 shadow（语法错误降级保留源码+标）。
@@ -31,6 +32,7 @@ This repository is **public** (GitHub Pages hosting requires it). It must never 
 - `src/search/{index,SearchResults}.tsx` — 全局标题搜索（H1–H6 + 文件名/路径；命中标「文件」/「标题 H{n}」，可双标）。
 - `src/assets/{extract,store,pipeline,wire}.ts` — 资源懒加载：API 拉字节→dataURL 入 `assets` 表→装配给 img/a；>10MB 占位；「全下」。
 - `src/settings/{store,SettingsView}.tsx` — 设置（PAT / owner/repo / 同步开关默认开、公式 KaTeX / Mermaid 开关默认关；公开库令牌可不填）。
+- `src/storage/{format,estimate,StorageUsage}.ts(x)` — 本机存储占用（自算 IDB 四表 + Cache Storage，不用 `navigator.storage`）与清理入口（图片等资源、笔记镜像；均两步确认）。
 - `src/updates/{version,format,useUpdate,UpdateBanner}.ts` — PWA 更新编排：prompt 模式「发现新版本」横幅（Q8：同版本只提示一次，记住到 settings）＋在线每 10 分钟周期复查＋Settings「检查更新」（永远 verbose）。版本串 `v<semver>+<git短SHA>` 经 vite `define` 注入 `__APP_VERSION__`，同串构建期写 `dist/version.json`（不入预缓存、只走网络，更新检测读它）。
 
 ### 测试缝约定

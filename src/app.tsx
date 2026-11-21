@@ -185,6 +185,19 @@ export function App() {
     settingsRef.current = s
   }
 
+  /** 笔记镜像被清空：复位同步横幅与首页列表 / 最近 / 搜索（票 19）。 */
+  async function handleMirrorCleared(): Promise<void> {
+    setLastSyncedAt(null)
+    setSyncFail(null)
+    setQuery('')
+    await refreshFiles()
+    try {
+      await refreshRecent()
+    } catch {
+      // 最近列表刷新失败不影响清空结果
+    }
+  }
+
   async function refreshRecent(): Promise<void> {
     setRecent(await listRecent(20))
   }
@@ -299,6 +312,8 @@ export function App() {
             checking={updates.checking}
             latestNote={updates.latestNote}
             onCheckUpdates={() => void updates.checkForUpdates()}
+            syncing={syncStatus === 'syncing'}
+            onMirrorCleared={() => void handleMirrorCleared()}
           />
         ) : recent.length === 0 && files.length === 0 ? (
           <div class="welcome">

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { estimateStorage, stringBytes } from './estimate'
+import { estimateStorage } from './estimate'
 import { saveMirrorMeta, upsertFile } from '../mirror/store'
 import { saveAsset } from '../assets/store'
 import { saveScroll } from '../reader/reading'
@@ -9,15 +9,6 @@ import { installFakeCaches } from '../test/fakeCaches'
 
 // 本机存储统计：逐类真实读取 IDB 四表 + Cache Storage。
 // 断言用人工推导的已知字面量（字节口径：Latin-1 1 B/字符、UTF-16 2 B/字符、数字 8 B、布尔 1 B）。
-
-describe('stringBytes', () => {
-  it('Latin-1 与 UTF-16 两种内部表示', () => {
-    expect(stringBytes('abc')).toBe(3)
-    expect(stringBytes('héllo')).toBe(5) // é = U+00E9 ≤ 0xFF → 一字节表示
-    expect(stringBytes('中文')).toBe(4)
-    expect(stringBytes('😀')).toBe(4) // 代理对两个码元 × 2
-  })
-})
 
 describe('estimateStorage', () => {
   beforeEach(async () => {

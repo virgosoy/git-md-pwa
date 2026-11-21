@@ -35,3 +35,16 @@ export async function listRecent(limit = 20): Promise<ReadingRecord[]> {
   )
   return all.sort((a, b) => b.openedAt - a.openedAt).slice(0, limit)
 }
+
+/** 事务作用域用：阅读表名（schema 仍由 src/idb.ts 唯一拥有）。 */
+export const READING_STORE = STORE_READING
+
+/**
+ * 在调用方已开启的事务里清空阅读位置。
+ * 阅读数据归本模块所有；票 19 的清空镜像需要与 mirror/meta 同一事务（原子），
+ * 故由本模块提供事务内的清理钩子，而不是让调用方直接碰 reading 表。
+ * 调用方需把 `READING_STORE` 列入事务作用域。
+ */
+export function clearReadingIn(tx: IDBTransaction): void {
+  tx.objectStore(READING_STORE).clear()
+}

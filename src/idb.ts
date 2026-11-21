@@ -52,24 +52,65 @@ export async function clearCachedDb(): Promise<void> {
   dbPromise = null
 }
 
+/** 开一个 readwrite 事务，返回它和「提交/中止」的完成 Promise（失败不静默）。 */
+async function beginTransaction(
+  storeNames: string[]
+): Promise<{ tx: IDBTransaction; done: Promise<void> }> {
+  const db = await getDb()
+  const tx = db.transaction(storeNames, 'readwrite')
+  const done = new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve()
+    // 主动 abort() 时 tx.error 可能为 null，仍要给出可读错误
+    tx.onabort = () => reject(tx.error ?? new Error('IndexedDB 事务已中止'))
+    tx.onerror = () => reject(tx.error ?? new Error('IndexedDB 事务失败'))
+  })
+  return { tx, done }
+}
+
 /** 等事务提交再 resolve；abort/error 一律 reject；不把半成品当成功。 */
-export function withStore<T>(
+export async function withStore<T>(
   storeName: string,
   fn: (store: IDBObjectStore) => IDBRequest<T>
 ): Promise<T> {
-  return getDb().then(
-    (db) =>
-      new Promise<T>((resolve, reject) => {
-        const tx = db.transaction(storeName, 'readwrite')
-        let result: T | undefined
-        tx.oncomplete = () => resolve(result as T)
-        tx.onabort = () => reject(tx.error)
-        tx.onerror = () => reject(tx.error)
-        const req = fn(tx.objectStore(storeName))
-        req.onsuccess = () => {
-          result = req.result
-        }
-        req.onerror = () => reject(req.error)
-      })
-  )
+  const { tx, done } = await beginTransaction([storeName])
+  let req: IDBRequest<T>
+  try {
+    req = fn(tx.objectStore(storeName))
+  } catch (err) {
+    // fn 同步抛错时事务仍会自行结束；吞掉 done 的拒绝，避免未处理的 rejection
+    void done.catch(() => {})
+    throw err
+  }
+  let result: T | undefined
+  req.onsuccess = () => {
+    result = req.result
+  }
+  // 请求失败默认会让事务 abort，由 done 统一 reject（此处不 preventDefault）
+  req.onerror = () => {}
+  await done
+  return result as T
+}
+
+/**
+ * 跨多个仓库的单个 readwrite 事务：等整体提交再 resolve，abort/error 一律 reject。
+ * 用于「要么全清、要么全不动」的清理动作（mirror + meta + reading）。
+ * 事务内的请求结果由调用方在 fn 里自行收集；请求按发起的先后顺序排队。
+ */
+export async function withStores(
+  storeNames: string[],
+  fn: (tx: IDBTransaction) => void
+): Promise<void> {
+  const { tx, done } = await beginTransaction(storeNames)
+  try {
+    fn(tx)
+  } catch (err) {
+    try {
+      tx.abort()
+    } catch {
+      // 事务可能已自动中止；保留原始错误
+    }
+    void done.catch(() => {})
+    throw err
+  }
+  await done
 }

@@ -14,6 +14,7 @@ import {
   STORE_SETTINGS,
   withStore
 } from '../idb'
+import { stringBytes } from '../lib/bytes'
 import type { AssetRecord } from '../assets/store'
 import type { StoredFile } from '../mirror/store'
 import { MIRROR_META_KEY } from '../mirror/store'
@@ -46,14 +47,8 @@ interface MetaRecord {
   syncedAt: number
 }
 
-const NON_LATIN1 = /[^\u0000-ÿ]/
 const NUMBER_BYTES = 8
 const BOOLEAN_BYTES = 1
-
-/** 字符串在 JS 引擎内部的字节估算：Latin-1 一字节表示，否则 UTF-16 两字节表示。 */
-export function stringBytes(value: string): number {
-  return NON_LATIN1.test(value) ? value.length * 2 : value.length
-}
 
 function empty(): CategoryUsage {
   return { count: 0, skipped: 0, contentBytes: 0, overheadBytes: 0 }

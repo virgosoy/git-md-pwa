@@ -16,6 +16,10 @@ export interface SettingsViewProps {
   checking?: boolean
   latestNote?: string | null
   onCheckUpdates?: () => void
+  /** 同步进行中（传给本机存储区块，禁用清空镜像） */
+  syncing?: boolean
+  /** 笔记镜像被清空后通知 App 刷新列表 / 最近 / 同步横幅 */
+  onMirrorCleared?: () => void
 }
 
 export function SettingsView({
@@ -25,7 +29,9 @@ export function SettingsView({
   lastCheckedAt,
   checking = false,
   latestNote = null,
-  onCheckUpdates
+  onCheckUpdates,
+  syncing = false,
+  onMirrorCleared
 }: SettingsViewProps) {
   const [form, setForm] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [loaded, setLoaded] = useState(false)
@@ -155,7 +161,7 @@ export function SettingsView({
         </div>
       )}
 
-      <StorageUsage />
+      <StorageUsage syncing={syncing} onMirrorCleared={onMirrorCleared} />
 
       <div class="settings__actions">
         <button type="submit" class="btn btn--primary" disabled={!loaded}>

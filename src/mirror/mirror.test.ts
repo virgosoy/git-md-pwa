@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createGithubClient } from '../github/client'
 import { mirrorRepo } from './mirror'
-import { loadFiles, getFile, loadMirrorMeta } from './store'
+import { loadFiles, getFile, loadMirrorMeta, clearMirror } from './store'
 import { wipeDb } from '../test/wipeDb'
 
 // S4 · 镜像编排：真实 client（注入 fake fetch）+ 真实 IndexedDB 存储的端到端。
@@ -111,6 +111,22 @@ describe('mirrorRepo 编排', () => {
 
     expect(srv.calls.contents - before).toBe(0)
     expect(res.fetched).toBe(0)
+  })
+
+  it('清空镜像后同一棵树会重新拉取：meta 已删，版本门不短路', async () => {
+    const srv = makeServer()
+    const client = createGithubClient('ghp_test_dummy', srv.fetch)
+    await mirrorRepo(client, REPO)
+    await clearMirror()
+
+    const before = srv.calls.contents
+    const res = await mirrorRepo(client, REPO)
+
+    expect(res.fetched).toBe(2)
+    expect(srv.calls.contents - before).toBe(2)
+    expect(new Set((await loadFiles()).map((f) => f.path))).toEqual(
+      new Set(['docs/notes.md', 'docs/medium.md', 'docs/big-dump.md'])
+    )
   })
 
   it('增量：sha 变更与新增文件被拉取、被移除文件被删除', async () => {

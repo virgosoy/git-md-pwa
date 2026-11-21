@@ -1,29 +1,35 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render } from 'preact'
+import type { ComponentProps } from 'preact'
 import { StorageUsage } from './StorageUsage'
 import { clearCachedAssets, loadAsset, saveAsset } from '../assets/store'
-import { upsertFile } from '../mirror/store'
+import { clearMirror, loadFiles, upsertFile } from '../mirror/store'
 import { wipeDb } from '../test/wipeDb'
 import { installFakeCaches } from '../test/fakeCaches'
 import { waitFor } from '../test/wait'
+import { button } from '../test/dom'
 
 // 清理动作的失败路径需要让 store 抛错；默认委托真实实现，其余导出保持原样。
 vi.mock('../assets/store', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../assets/store')>()
   return { ...actual, clearCachedAssets: vi.fn(actual.clearCachedAssets) }
 })
+vi.mock('../mirror/store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../mirror/store')>()
+  return { ...actual, clearMirror: vi.fn(actual.clearMirror) }
+})
 
 // 设置页「本机存储」组件：统计完成后展示五行 + 总量；某类失败时给「—」。
-// 清理资源缓存：两步确认、取消不删、确认后刷新统计、失败不破坏数据。
+// 清理资源缓存 / 清空笔记镜像：两步确认、取消不删、确认后刷新统计、失败不破坏数据。
 
 async function seedNote(): Promise<void> {
   await upsertFile({ path: 'a.md', sha: 's1', content: 'hi', size: 2, status: 'ok' })
 }
 
-function mount(): HTMLElement {
+function mount(props: ComponentProps<typeof StorageUsage> = {}): HTMLElement {
   const c = document.createElement('div')
   document.body.appendChild(c)
-  render(<StorageUsage />, c)
+  render(<StorageUsage {...props} />, c)
   return c
 }
 
@@ -33,20 +39,19 @@ function row(c: HTMLElement, name: string): Element | undefined {
   )
 }
 
-function button(c: HTMLElement, text: string): HTMLButtonElement {
-  const b = [...c.querySelectorAll('button')].find((x) => x.textContent === text)
-  if (!b) throw new Error(`未找到按钮：${text}`)
-  return b as HTMLButtonElement
-}
-
 function assetsCount(c: HTMLElement): string | null | undefined {
   return row(c, '图片等资源')?.querySelector('.storage__count')?.textContent
+}
+
+function notesCount(c: HTMLElement): string | null | undefined {
+  return row(c, '笔记')?.querySelector('.storage__count')?.textContent
 }
 
 describe('StorageUsage', () => {
   beforeEach(async () => {
     await wipeDb()
     vi.mocked(clearCachedAssets).mockClear()
+    vi.mocked(clearMirror).mockClear()
   })
 
   afterEach(() => {
@@ -144,5 +149,68 @@ describe('StorageUsage', () => {
     expect(c.textContent).toContain('清理失败，请重试。')
     expect(assetsCount(c)).toBe('1 个')
     expect(await loadAsset('a.png')).toBeDefined()
+  })
+
+  it('清空笔记镜像需两步确认；取消不删，确认后清空并刷新统计与回调', async () => {
+    await upsertFile({ path: 'a.md', sha: 's1', content: 'hi', size: 2, status: 'ok' })
+    await upsertFile({ path: 'b.md', sha: 's2', content: '中文', size: 6, status: 'ok' })
+    installFakeCaches([])
+    const onMirrorCleared = vi.fn()
+    const c = mount({ onMirrorCleared })
+    await waitFor(() => (c.textContent ?? '').includes('共 '))
+
+    expect(notesCount(c)).toBe('2 篇')
+    expect(button(c, '清空笔记镜像').disabled).toBe(false)
+
+    button(c, '清空笔记镜像').click()
+    await waitFor(() => (c.textContent ?? '').includes('将删除本机镜像'))
+    const confirmText = c.querySelector('.storage__confirm')?.textContent ?? ''
+    expect(confirmText).toContain('将删除本机镜像的 2 篇笔记')
+    expect(confirmText).toContain('约 6 B')
+    expect(confirmText).toContain('阅读位置')
+
+    button(c, '取消').click()
+    await waitFor(() => !(c.textContent ?? '').includes('将删除本机镜像'))
+    expect(vi.mocked(clearMirror)).not.toHaveBeenCalled()
+    expect(await loadFiles()).toHaveLength(2)
+    expect(notesCount(c)).toBe('2 篇')
+
+    button(c, '清空笔记镜像').click()
+    await waitFor(() => (c.textContent ?? '').includes('将删除本机镜像'))
+    button(c, '确认清空').click()
+    await waitFor(() => (c.textContent ?? '').includes('已清空'))
+
+    expect(c.textContent).toContain('已清空本机笔记（2 篇，约 6 B）')
+    await waitFor(() => notesCount(c) === '0 篇')
+    expect(notesCount(c)).toBe('0 篇')
+    expect(onMirrorCleared).toHaveBeenCalledTimes(1)
+    expect(await loadFiles()).toEqual([])
+    expect(button(c, '清空笔记镜像').disabled).toBe(true)
+  })
+
+  it('清空笔记失败：提示错误，笔记与统计不被清成 0', async () => {
+    await upsertFile({ path: 'a.md', sha: 's1', content: 'hi', size: 2, status: 'ok' })
+    vi.mocked(clearMirror).mockRejectedValueOnce(new Error('abort'))
+    installFakeCaches([])
+    const c = mount()
+    await waitFor(() => (c.textContent ?? '').includes('共 '))
+
+    button(c, '清空笔记镜像').click()
+    await waitFor(() => (c.textContent ?? '').includes('将删除本机镜像'))
+    button(c, '确认清空').click()
+    await waitFor(() => (c.textContent ?? '').includes('清空失败'))
+
+    expect(c.textContent).toContain('清空失败，请重试。')
+    expect(notesCount(c)).toBe('1 篇')
+    expect(await loadFiles()).toHaveLength(1)
+  })
+
+  it('同步进行中禁用清空笔记按钮', async () => {
+    await upsertFile({ path: 'a.md', sha: 's1', content: 'hi', size: 2, status: 'ok' })
+    installFakeCaches([])
+    const c = mount({ syncing: true })
+    await waitFor(() => (c.textContent ?? '').includes('共 '))
+
+    expect(button(c, '清空笔记镜像').disabled).toBe(true)
   })
 })

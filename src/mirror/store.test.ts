@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
+  clearMirror,
   loadMirrorMeta,
   saveMirrorMeta,
   upsertFile,
@@ -8,6 +9,8 @@ import {
   removeFiles,
   diffWithRemote
 } from './store'
+import { listRecent, saveScroll } from '../reader/reading'
+import { loadSettings, saveSettings } from '../settings/store'
 import type { MirrorFile } from './tree'
 import type { StoredFile } from './store'
 import { wipeDb } from '../test/wipeDb'
@@ -95,5 +98,42 @@ describe('镜像存储（IndexedDB）', () => {
     await removeFiles(['a.md'])
     const all = await loadFiles()
     expect(all.map((f) => f.path)).toEqual(['b.md'])
+  })
+})
+
+describe('clearMirror（清空本机笔记镜像）', () => {
+  beforeEach(async () => {
+    await wipeDb()
+  })
+
+  it('清空镜像、同步记录与阅读数据，保留设置与资源', async () => {
+    await upsertFile({ path: 'a.md', sha: 's1', content: 'hi', size: 2, status: 'ok' })
+    await upsertFile({ path: 'b.md', sha: 's2', content: '中文', size: 6, status: 'ok' })
+    await upsertFile({
+      path: 'big.md',
+      sha: 's3',
+      content: '',
+      size: 10485761,
+      status: 'too-large'
+    })
+    await saveMirrorMeta({ commitSha: 'abc123', syncedAt: 1000 })
+    await saveScroll('a.md', 42)
+    await saveSettings({ token: 'ghp_test_dummy', owner: 'me', repo: 'fixtures' })
+
+    // 'hi' = 2 B，'中文' = 4 B；占位正文为空不计字节
+    expect(await clearMirror()).toEqual({ count: 2, skipped: 1, bytes: 6 })
+
+    expect(await loadFiles()).toEqual([])
+    expect(await loadMirrorMeta()).toBeNull()
+    expect(await listRecent()).toEqual([])
+    const s = await loadSettings()
+    expect(s.owner).toBe('me')
+    expect(s.repo).toBe('fixtures')
+    expect(s.token).toBe('ghp_test_dummy')
+  })
+
+  it('空库返回零，不抛错', async () => {
+    expect(await clearMirror()).toEqual({ count: 0, skipped: 0, bytes: 0 })
+    expect(await loadFiles()).toEqual([])
   })
 })
