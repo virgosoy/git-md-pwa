@@ -1,8 +1,10 @@
-// 全局搜索（票 06 → 票 12 → 票 15）：从镜像的 md 建立「标题 + 正文」索引。
+// 全局搜索（票 06 → 票 12 → 票 15 → 票 21）：从镜像的 md 建立「标题 + 正文」索引。
 // 纯函数模块：extractHeadings 抽取标题、buildIndex 建档（标题 + 正文）、
 // findBodySnippet 摘录正文命中行、searchNotes 匹配（文件/标题/正文三态）。
 // 票 15：extractHeadings 默认改走 markdown-it token 流（容器包裹的标题也抽得出），
 // 保留 regex 模式作为回退（设置开关 betterHeadingExtract=false 时用）。
+// 票 21：标题文本改取行内子 token 拼纯文本（与渲染后 textContent 对齐），供
+// 「点搜索结果标题 → 跳到该标题」按 level+text+nth 定位；regex 回退模式保持原文。
 
 import MarkdownIt from 'markdown-it'
 import type { MarkdownIt as MarkdownItInstance } from 'markdown-it'
@@ -10,14 +12,21 @@ import type { MarkdownIt as MarkdownItInstance } from 'markdown-it'
 export interface Heading {
   level: number
   text: string
+  /** 同 level+text 在本文中的第几次出现（1 起）——渲染侧按同规则定位跳转锚点 */
+  nth: number
 }
+
+/** 搜索结果 → 阅读器的跳转锚点：按 (level, text, nth) 在渲染后的标题里定位 */
+export type HeadingAnchor = Pick<Heading, 'level' | 'text' | 'nth'>
 
 /** 标题抽取模式：token=markdown-it 块级 token（默认，渲染器语义）；regex=旧逐行正则 */
 export type ExtractMode = 'token' | 'regex'
 
 // 建索引的最小 markdown-it 实例：仅 CommonMark + 表格，不需要 linkify/highlight
 //（那些只在渲染阶段用；parse 只产出 block/inline token）。
-const indexMd: MarkdownItInstance = new MarkdownIt()
+// html:true 与渲染器（render.ts）对齐：标题里的行内 HTML 在子 token 里成为 html_inline，
+// 拼纯文本时才不会把 `<b>` 当文字算进去。
+const indexMd: MarkdownItInstance = new MarkdownIt({ html: true })
 
 // 围栏状态机（regex 回退路径）：记录开口字符与长度。
 // CommonMark：闭合行须为 ≥ 开口数的同字符纯行——因此 4 反引号外层不被内层 3 反引号提前闭合（票 16）。
@@ -39,30 +48,53 @@ function fenceOpen(line: string): Fence | null {
  * 抽取 H1-H6 标题。默认 token 流（markdown-it）：代码块围栏内的井号、`#` 无空格
  * 等 Markdown 语义由解析器裁决，容器（引用/列表）内标题也抽得出，与渲染/单篇 TOC 一致。
  * `mode='regex'` 退回旧逐行正则（设置开关关时用）。
+ * 文本口径：token 流取行内子 token 拼纯文本（与渲染后 textContent 一致，票 21）；
+ * regex 回退保持原文（带行内标记，跳转 best-effort）。
  * 行尾 ` #+` 有前置空格才剥掉（CommonMark：`foo#` 保留，`foo ##` 剥成 `foo`）。
  */
 export function extractHeadings(content: string, mode: ExtractMode = 'token'): Heading[] {
   return mode === 'token' ? extractHeadingsToken(content) : extractHeadingsRegex(content)
 }
 
+/** 行内标题的纯文本：拼接 text / code_inline 子 token（图片 alt、链接 URL 不算，与渲染后一致） */
+function inlinePlainText(
+  inline: { children?: ReadonlyArray<{ type: string; content: string }> | null } | undefined
+): string {
+  if (!inline?.children) return ''
+  let out = ''
+  for (const child of inline.children) {
+    if (child.type === 'text' || child.type === 'code_inline') out += child.content
+  }
+  return out.trim()
+}
+
+/** 给抽取结果补 nth（同 level+text 的第几次出现，1 起）——渲染侧按同规则定位锚点 */
+function withNth(list: Array<{ level: number; text: string }>): Heading[] {
+  const counts = new Map<string, number>()
+  return list.map((h) => {
+    const key = `${h.level}\u0000${h.text}`
+    const nth = (counts.get(key) ?? 0) + 1
+    counts.set(key, nth)
+    return { level: h.level, text: h.text, nth }
+  })
+}
+
 function extractHeadingsToken(content: string): Heading[] {
   const tokens = indexMd.parse(content, {})
-  const out: Heading[] = []
+  const out: Array<{ level: number; text: string }> = []
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i]
     const m = /^h([1-6])$/.test(t.tag || '')
     if (t.type === 'heading_open' && m) {
-      // heading_open 紧跟 inline token：其 content 即标题文本（含行内标记原样）
-      const inline = tokens[i + 1]
-      const text = inline && inline.type === 'inline' ? (inline.content || '').trim() : ''
-      out.push({ level: Number(t.tag.slice(1)), text })
+      // heading_open 紧跟 inline token：拼其子 token 的纯文本（渲染后 textContent 口径）
+      out.push({ level: Number(t.tag.slice(1)), text: inlinePlainText(tokens[i + 1]) })
     }
   }
-  return out
+  return withNth(out)
 }
 
 function extractHeadingsRegex(content: string): Heading[] {
-  const out: Heading[] = []
+  const out: Array<{ level: number; text: string }> = []
   let fence: Fence | null = null
 
   for (const raw of content.split(/\r?\n/)) {
@@ -83,7 +115,25 @@ function extractHeadingsRegex(content: string): Heading[] {
       out.push({ level: m[1].length, text })
     }
   }
-  return out
+  return withNth(out)
+}
+
+/**
+ * 在标题序列（渲染后的 TOC 或索引标题）里定位锚点：同 level+text 的第 nth 个（1 起）。
+ * 找不到返回 -1——调用方据此降级（打开笔记但停在阅读位置）。
+ */
+export function findAnchorIndex(
+  headings: ReadonlyArray<{ level: number; text: string }>,
+  anchor: HeadingAnchor
+): number {
+  let seen = 0
+  for (let i = 0; i < headings.length; i++) {
+    const h = headings[i]
+    if (h.level !== anchor.level || h.text !== anchor.text) continue
+    seen += 1
+    if (seen === anchor.nth) return i
+  }
+  return -1
 }
 
 // S2 · 索引与搜索

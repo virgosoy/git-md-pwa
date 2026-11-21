@@ -15,10 +15,10 @@ describe('extractHeadings', () => {
       '无标题行'
     ].join('\n')
     expect(extractHeadings(content)).toEqual([
-      { level: 1, text: '部署排障' },
-      { level: 2, text: '二级' },
-      { level: 3, text: '三级' },
-      { level: 6, text: '六级' }
+      { level: 1, text: '部署排障', nth: 1 },
+      { level: 2, text: '二级', nth: 1 },
+      { level: 3, text: '三级', nth: 1 },
+      { level: 6, text: '六级', nth: 1 }
     ])
   })
 
@@ -30,7 +30,7 @@ describe('extractHeadings', () => {
       '```',
       '# 真标题'
     ].join('\n')
-    expect(extractHeadings(content)).toEqual([{ level: 1, text: '真标题' }])
+    expect(extractHeadings(content)).toEqual([{ level: 1, text: '真标题', nth: 1 }])
   })
 
   it('无标题返回空数组；无空格井号不算标题', () => {
@@ -39,11 +39,11 @@ describe('extractHeadings', () => {
   })
 
   it('CommonMark 语义：无空格的尾部 # 保留（# foo# → foo#）', () => {
-    expect(extractHeadings('# foo#')).toEqual([{ level: 1, text: 'foo#' }])
+    expect(extractHeadings('# foo#')).toEqual([{ level: 1, text: 'foo#', nth: 1 }])
   })
 
   it('CRLF 与尾部 # 正常处理', () => {
-    expect(extractHeadings('## 标题\r\n正文\r\n')).toEqual([{ level: 2, text: '标题' }])
+    expect(extractHeadings('## 标题\r\n正文\r\n')).toEqual([{ level: 2, text: '标题', nth: 1 }])
   })
 
   // —— 票 15 ——
@@ -59,9 +59,9 @@ describe('extractHeadings', () => {
       '1. ### 有序列表标题'
     ].join('\n')
     expect(extractHeadings(content)).toEqual([
-      { level: 4, text: '💛 grill-me (skill)' },
-      { level: 2, text: '列表内标题' },
-      { level: 3, text: '有序列表标题' }
+      { level: 4, text: '💛 grill-me (skill)', nth: 1 },
+      { level: 2, text: '列表内标题', nth: 1 },
+      { level: 3, text: '有序列表标题', nth: 1 }
     ])
   })
 
@@ -80,7 +80,7 @@ describe('extractHeadings', () => {
       '#### 💛 grill-me (skill)' // 闭合后是真标题（旧代码被吞）
     ].join('\n')
     expect(extractHeadings(content, 'regex')).toEqual([
-      { level: 4, text: '💛 grill-me (skill)' }
+      { level: 4, text: '💛 grill-me (skill)', nth: 1 }
     ])
   })
 
@@ -96,7 +96,7 @@ describe('extractHeadings', () => {
       '正文'
     ].join('\n')
     expect(extractHeadings(content, 'regex')).toEqual([
-      { level: 4, text: 'karpathy-guidelines' }
+      { level: 4, text: 'karpathy-guidelines', nth: 1 }
     ])
   })
 
@@ -117,6 +117,31 @@ describe('extractHeadings', () => {
 
   it('围栏内标题 token 流也不抽（语义与正则一致）', () => {
     const content = ['```md', '# 不是标题', '```', '', '# 真标题'].join('\n')
-    expect(extractHeadings(content)).toEqual([{ level: 1, text: '真标题' }])
+    expect(extractHeadings(content)).toEqual([{ level: 1, text: '真标题', nth: 1 }])
+  })
+
+  // —— 票 21：标题文本与渲染后 textContent 对齐 ——
+
+  it('行内标记剥成纯文本（链接/行内 HTML/图片 alt 不算标题文本）', () => {
+    const content = [
+      '## 见 [文档](https://x.com/a) 说明',
+      '## <b>粗体</b>标题',
+      '## ![图](a.png) 说明'
+    ].join('\n')
+    expect(extractHeadings(content)).toEqual([
+      { level: 2, text: '见 文档 说明', nth: 1 },
+      { level: 2, text: '粗体标题', nth: 1 },
+      { level: 2, text: '说明', nth: 1 }
+    ])
+  })
+
+  it('同 level+text 重复出现按顺序记 nth（1 起）', () => {
+    const content = ['# 甲', '## 甲', '### 甲', '## 甲'].join('\n')
+    expect(extractHeadings(content)).toEqual([
+      { level: 1, text: '甲', nth: 1 },
+      { level: 2, text: '甲', nth: 1 },
+      { level: 3, text: '甲', nth: 1 },
+      { level: 2, text: '甲', nth: 2 }
+    ])
   })
 })

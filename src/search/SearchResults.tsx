@@ -1,13 +1,16 @@
 // 搜索命中列表：文件名恒为主行（命中段高亮），标题行逐条展示（H 徽标 + 标题文本），
 // 目录与正文摘录随命中显示；命中的子串统一包 <mark class="search-hit">。
+// 票 21：标题行是独立点击目标——点它打开笔记并跳到该标题；卡内其余区域仍普通打开。
 // 高亮切段是纯函数 highlightSegments（独立单测），组件只做渲染。
 
-import type { SearchHit } from './index'
+import type { HeadingAnchor, SearchHit } from './index'
 
 export interface SearchResultsProps {
   hits: SearchHit[]
   query: string
   onOpen: (path: string) => void
+  /** 点标题行：打开笔记并跳到该标题（票 21） */
+  onOpenHeading: (path: string, anchor: HeadingAnchor) => void
 }
 
 /**
@@ -57,7 +60,7 @@ function stemAndDir(path: string): { stem: string; dir: string } {
   return { stem: file.replace(/\.md$/i, ''), dir: slash === -1 ? '' : path.slice(0, slash + 1) }
 }
 
-export function SearchResults({ hits, query, onOpen }: SearchResultsProps) {
+export function SearchResults({ hits, query, onOpen, onOpenHeading }: SearchResultsProps) {
   if (hits.length === 0) {
     return <p class="app__hint">没有匹配。</p>
   }
@@ -67,15 +70,31 @@ export function SearchResults({ hits, query, onOpen }: SearchResultsProps) {
         const { stem, dir } = stemAndDir(h.path)
         return (
           <li key={h.path}>
-            <button class="recent__item search-item" onClick={() => onOpen(h.path)}>
-              <span class="search-item__name">
+            {/* 容器不是按钮（标题行要成为独立点击目标）：卡内空白/目录/摘录走普通打开 */}
+            <div class="recent__item search-item" onClick={() => onOpen(h.path)}>
+              <button
+                type="button"
+                class="search-item__name"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onOpen(h.path)
+                }}
+              >
                 <Highlight text={stem} query={query} />
-              </span>
+              </button>
               {h.headingHits.map((hh, i) => (
-                <span class="search-item__heading" key={i}>
+                <button
+                  type="button"
+                  class="search-item__heading"
+                  key={i}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onOpenHeading(h.path, hh)
+                  }}
+                >
                   <span class="search-item__level">H{hh.level}</span>
                   <Highlight text={hh.text} query={query} />
-                </span>
+                </button>
               ))}
               {dir && (
                 <span class="search-item__path">
@@ -87,7 +106,7 @@ export function SearchResults({ hits, query, onOpen }: SearchResultsProps) {
                   …<Highlight text={h.bodySnippet} query={query} />…
                 </span>
               )}
-            </button>
+            </div>
           </li>
         )
       })}

@@ -3,6 +3,8 @@ import { render } from 'preact'
 import { App } from './app'
 import { saveSettings } from './settings/store'
 import { upsertFile } from './mirror/store'
+import { saveScroll } from './reader/reading'
+import { waitFor } from './test/wait'
 import { wipeDb } from './test/wipeDb'
 
 // SW 更新管道在 App 集成测试里不关心：把 virtual:pwa-register/preact 这个模块缝假成
@@ -157,6 +159,50 @@ describe('首页全局搜索（集成）', () => {
     await flushFrames()
     expect(c.textContent).toContain('README.md')
     expect(main.scrollTop).toBe(999)
+  })
+
+  // 票 21：点标题行 → 打开笔记并跳到该标题（锚点优先于阅读位置）
+  it('点标题行 → 打开该笔记并跳到该标题', async () => {
+    const c = document.createElement('div')
+    document.body.appendChild(c)
+    await saveScroll('docs/归档.md', 500)
+    render(<App />, c)
+    await flushFrames()
+
+    setSearch(c, '排障')
+    await flushFrames()
+    ;(c.querySelector('.search-item__heading') as HTMLElement).click()
+    await waitFor(() => c.querySelector('.reader') != null)
+    await flushFrames()
+
+    expect(c.querySelector('.app__title--trunc')?.textContent).toBe('docs/归档.md')
+    const host = c.querySelector('.reader') as HTMLElement & { shadowRoot: ShadowRoot }
+    expect(host.shadowRoot.querySelector('h2')?.textContent).toBe('部署排障')
+    // jsdom 几何为 0：目标 = 阅读位置 500 - 12
+    expect(host.scrollTop).toBe(488)
+  })
+
+  // 票 21：标题在渲染后对不上 → 普通打开 + 提示（4 秒自动消失）
+  it('标题定位失败 → 普通打开并提示，4 秒后提示自动消失', async () => {
+    const c = document.createElement('div')
+    document.body.appendChild(c)
+    render(<App />, c)
+    await flushFrames()
+
+    // 索引来自 App 启动时的 files 快照；改库不刷新状态 → 命中仍在，打开时正文已换掉该标题
+    await upsertFile(file('docs/归档.md', '# 归档记录\n## 换了标题'))
+    setSearch(c, '排障')
+    await flushFrames()
+    ;(c.querySelector('.search-item__heading') as HTMLElement).click()
+    await waitFor(() => c.querySelector('.reader') != null)
+    await flushFrames()
+
+    expect(c.querySelector('.app__title--trunc')?.textContent).toBe('docs/归档.md')
+    expect(c.querySelector('.notice')?.textContent).toContain('未找到该标题')
+
+    await new Promise((r) => setTimeout(r, 4200))
+    await flushFrames()
+    expect(c.querySelector('.notice')).toBeNull()
   })
 })
 

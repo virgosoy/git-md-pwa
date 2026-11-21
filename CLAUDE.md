@@ -29,7 +29,7 @@ This repository is **public** (GitHub Pages hosting requires it). It must never 
 - `src/reader/{render,mermaid,links,reading,ReaderView}.tsx` — markdown-it 渲染（`createMd(opts)` 工厂：可选注入 KaTeX 公式引擎 `math` + 开启 Mermaid 围栏宿主块 `mermaid`；表格+highlight，**原始 HTML 透传**，ADR-0002/0003）；每篇笔记进**独立 Shadow DOM**（样式不外漏、innerHTML 的 script 天然不执行）；内链分类/路径解析、阅读位置+最近、资源装配；`mermaid.ts` 按需 `import('mermaid')` 把放 `data-mermaid` 宿主块渲染成自包含 SVG 注入 shadow（语法错误降级保留源码+标）。
 - `src/sync/{sync,time,SyncBanner}.tsx` — 同步编排（`runSync` 把 mirrorRepo 抛错映射为 typed 结果）、时间文案、状态横幅（「离线 · 上次同步 x 分钟前」）。
 - `src/notes/{group,NotesList}.tsx` — 全部笔记按顶层目录分组列表。
-- `src/search/{index,SearchResults}.tsx` — 全局标题搜索（H1–H6 + 文件名/路径；命中标「文件」/「标题 H{n}」，可双标）。
+- `src/search/{index,SearchResults}.tsx` — 全局标题搜索（H1–H6 + 文件名/路径；命中标「文件」/「标题 H{n}」，可双标）。标题文本取 markdown-it 行内子 token 拼纯文本（与渲染后 textContent 对齐）；标题行可点击，打开笔记并跳到该标题（按 level+text+nth 对齐，票 21）。
 - `src/assets/{extract,store,pipeline,wire}.ts` — 资源懒加载：API 拉字节→dataURL 入 `assets` 表→装配给 img/a；>10MB 占位；「全下」。
 - `src/settings/{store,SettingsView}.tsx` — 设置（PAT / owner/repo / 同步开关默认开、公式 KaTeX / Mermaid 开关默认关；公开库令牌可不填）。
 - `src/storage/{format,estimate,StorageUsage}.ts(x)` — 本机存储占用（自算 IDB 四表 + Cache Storage，不用 `navigator.storage`）与清理入口（图片等资源、笔记镜像；均两步确认）。

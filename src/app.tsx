@@ -6,6 +6,7 @@ import { getFile, loadFiles } from './mirror/store'
 import type { StoredFile } from './mirror/store'
 import { NotesList } from './notes/NotesList'
 import { buildIndex, searchNotes } from './search'
+import type { HeadingAnchor } from './search'
 import { SearchResults } from './search/SearchResults'
 import { ensureAsset } from './assets/pipeline'
 import type { AssetLoader } from './assets/wire'
@@ -26,10 +27,15 @@ interface OpenNote {
   path: string
   content: string
   scrollTop: number
+  /** 21 · 打开后跳到的标题锚点（主页搜索结果点标题行） */
+  anchor?: HeadingAnchor
 }
 
 /** 滚动位置写入的 trailing debounce，避免每个滚动 tick 都写 IDB */
 const SCROLL_SAVE_DELAY = 300
+
+/** notice 自动消失时长（票 21：阅读器里也会出现，不再常驻） */
+const NOTICE_AUTO_DISMISS_MS = 4000
 
 export function App() {
   const updates = useUpdate()
@@ -81,6 +87,13 @@ export function App() {
     // 非空 → 非空（结果里增删字）：保持位置不动
     prevQueryEmpty.current = nowEmpty
   }, [query])
+
+  // 21：notice 在阅读器里也会显示（不再只在首页），统一自动消失，避免常驻遮挡正文
+  useEffect(() => {
+    if (!notice) return
+    const timer = setTimeout(() => setNotice(null), NOTICE_AUTO_DISMISS_MS)
+    return () => clearTimeout(timer)
+  }, [notice])
 
   /** 搜索框输入：进搜索前先记住列表位置（渲染切换后再读会被浏览器夹小） */
   function handleQueryInput(e: Event): void {
@@ -202,7 +215,7 @@ export function App() {
     setRecent(await listRecent(20))
   }
 
-  async function openNote(path: string): Promise<void> {
+  async function openNote(path: string, anchor?: HeadingAnchor): Promise<void> {
     const file = await getFile(path)
     if (!file || file.status !== 'ok') {
       setNotice(`「${path}」尚未镜像（超过 10MB 或尚未同步），暂时打不开。`)
@@ -211,7 +224,7 @@ export function App() {
     setNotice(null)
     setFindOpen(false) // 切入新笔记默认关闭查找（find 状态不跨篇）
     const reading = await loadReading(path)
-    setCurrent({ path, content: file.content, scrollTop: reading?.scrollTop ?? 0 })
+    setCurrent({ path, content: file.content, scrollTop: reading?.scrollTop ?? 0, anchor })
     await recordOpen(path)
     await refreshRecent()
   }
@@ -290,6 +303,8 @@ export function App() {
             path={current.path}
             content={current.content}
             initialScrollTop={current.scrollTop}
+            initialAnchor={current.anchor}
+            onAnchorMiss={() => setNotice('未找到该标题，已从上次阅读位置打开')}
             assetLoader={assetLoader}
             refreshToken={readerTick}
             renderMath={settings?.renderMath ?? false}
@@ -331,7 +346,12 @@ export function App() {
               onInput={handleQueryInput}
             />
             {query.trim() ? (
-              <SearchResults hits={hits} query={query} onOpen={(p) => void openNote(p)} />
+              <SearchResults
+                hits={hits}
+                query={query}
+                onOpen={(p) => void openNote(p)}
+                onOpenHeading={(p, anchor) => void openNote(p, anchor)}
+              />
             ) : (
               <>
                 {recent.length > 0 && (
@@ -360,7 +380,7 @@ export function App() {
         )}
       </main>
 
-      {notice && !current && (
+      {notice && (
         <div class="notice" role="status">
           {notice}
         </div>

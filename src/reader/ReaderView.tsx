@@ -9,6 +9,8 @@ import { renderNote, mayHaveMath, mayHaveMermaid, createMd } from './render'
 import type { MathEngine } from './render'
 import { wireMermaid } from './mermaid'
 import { assignHeadingIds, headingScrollTarget, currentHeadingIndex, filterHeadings, type TocHeading } from './toc'
+import { findAnchorIndex } from '../search'
+import type { HeadingAnchor } from '../search'
 import { classifyLink, resolveNotePath } from './links'
 import { wireAssets } from '../assets/wire'
 import type { AssetLoader } from '../assets/wire'
@@ -252,6 +254,13 @@ export interface ReaderViewProps {
   content: string
   /** 装配时还原的阅读位置（打开时从阅读存储读取） */
   initialScrollTop?: number
+  /**
+   * 21 · 打开后跳到的标题锚点（主页搜索结果点标题行）；命中优先于 initialScrollTop。
+   * 只在切换新笔记时应用一次。
+   */
+  initialAnchor?: HeadingAnchor
+  /** 21 · 锚点在渲染后的标题里找不到时回调（App 据此提示；阅读位置保持 initialScrollTop） */
+  onAnchorMiss?: (anchor: HeadingAnchor) => void
   /** 资源加载器（图/PDF 懒加载）；不传则跳过资源装配 */
   assetLoader?: AssetLoader | null
   /** 变化时触发重新装配（如「本篇资源全下」后让已缓存资源回填） */
@@ -275,6 +284,8 @@ export function ReaderView({
   path,
   content,
   initialScrollTop = 0,
+  initialAnchor,
+  onAnchorMiss,
   assetLoader,
   refreshToken = 0,
   renderMath = false,
@@ -293,10 +304,14 @@ export function ReaderView({
   const prevPathRef = useRef<string | null>(null)
   const tocPinnedRef = useRef(tocPinned)
   const onTocPinChangeRef = useRef(onTocPinChange)
+  const anchorRef = useRef(initialAnchor)
+  const onAnchorMissRef = useRef(onAnchorMiss)
   pathRef.current = path
   openRef.current = onOpenNote
   tocPinnedRef.current = tocPinned
   onTocPinChangeRef.current = onTocPinChange
+  anchorRef.current = initialAnchor
+  onAnchorMissRef.current = onAnchorMiss
   // 09 查找：query/count/current 放 state；同步 refs 供异步 fill() 重建后重放
   const [query, setQuery] = useState('')
   const [count, setCount] = useState(0)
@@ -460,8 +475,18 @@ export function ReaderView({
           (next) => onTocPinChangeRef.current?.(next)
         )
       }
-      // 只在切换新笔记时还原阅读位置；同路径内容原地更新不清滚动（防中途丢位置）
-      if (isNewNote) hostEl.scrollTop = initialScrollTop
+      // 只在切换新笔记时还原阅读位置；同路径内容原地更新不清滚动（防中途丢位置）。
+      // 21：带锚点时优先滚到该标题（按 level+text+nth 与渲染后标题对齐）；
+      // 找不到则保留还原的阅读位置并回调 miss（App 提示「未找到该标题」）。
+      if (isNewNote) {
+        hostEl.scrollTop = initialScrollTop
+        const anchor = anchorRef.current
+        if (anchor) {
+          const idx = findAnchorIndex(toc, anchor)
+          if (idx >= 0) hostEl.scrollTop = headingScrollTarget(hostEl, toc[idx].el)
+          else onAnchorMissRef.current?.(anchor)
+        }
+      }
       // 09：shadow 重建后按当前 query 重放高亮（find 状态下 全下/刷新 不丢查找）
       reapplyFind()
     }

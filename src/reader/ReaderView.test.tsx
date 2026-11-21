@@ -646,3 +646,49 @@ describe('ReaderView 单篇查找（09）', () => {
     expect(countText(c)).toBe('1/2')
   })
 })
+
+// 票 21：主页搜索结果点标题行 → 打开笔记并跳到该标题
+describe('初始锚点跳转（票 21）', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  const NOTE_DUP = '# 一\n\n## 二\n\n正文\n\n# 一\n\n## 二'
+
+  it('命中锚点：跳转（jsdom 几何为 0 → scrollTop = 阅读位置 - 12），不回调 miss', async () => {
+    const miss = vi.fn()
+    const c = mount(
+      <ReaderView
+        path="a.md"
+        content={NOTE_DUP}
+        initialScrollTop={999}
+        initialAnchor={{ level: 2, text: '二', nth: 2 }}
+        onAnchorMiss={miss}
+        onOpenNote={() => {}}
+      />
+    )
+    await flush()
+    const host = c.querySelector('.reader') as HTMLElement
+    expect(miss).not.toHaveBeenCalled()
+    expect(host.scrollTop).toBe(987) // 999 + (0 - 0) - 12
+  })
+
+  it('未命中锚点：保留阅读位置并回调 onAnchorMiss', async () => {
+    const anchor = { level: 2, text: '不存在', nth: 1 }
+    const miss = vi.fn()
+    const c = mount(
+      <ReaderView
+        path="a.md"
+        content={NOTE_DUP}
+        initialScrollTop={123}
+        initialAnchor={anchor}
+        onAnchorMiss={miss}
+        onOpenNote={() => {}}
+      />
+    )
+    await flush()
+    expect(miss).toHaveBeenCalledWith(anchor)
+    const host = c.querySelector('.reader') as HTMLElement
+    expect(host.scrollTop).toBe(123)
+  })
+})

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildIndex, searchNotes, findBodySnippet } from './index'
+import { buildIndex, searchNotes, findBodySnippet, findAnchorIndex } from './index'
 
 // S2 · 索引构建 + 搜索匹配：命中区分「文件」「标题（含 H1）」「正文」三态
 // S3 · 正文全文搜索（票 12）：正文命中带摘录；标题命中不重复计正文；围栏内可搜
@@ -20,15 +20,15 @@ describe('buildIndex', () => {
       {
         path: 'docs/归档.md',
         headings: [
-          { level: 1, text: '年度总结' },
-          { level: 2, text: '部署排障' },
-          { level: 3, text: '缓存清理' }
+          { level: 1, text: '年度总结', nth: 1 },
+          { level: 2, text: '部署排障', nth: 1 },
+          { level: 3, text: '缓存清理', nth: 1 }
         ],
         body: '# 年度总结\n## 部署排障\n### 缓存清理'
       },
       {
         path: 'docs/notes.md',
-        headings: [{ level: 1, text: 'Notes' }],
+        headings: [{ level: 1, text: 'Notes', nth: 1 }],
         body: '# Notes\n正文'
       },
       { path: 'README.md', headings: [], body: '没有标题只有文字' }
@@ -43,7 +43,7 @@ describe('searchNotes', () => {
       {
         path: 'docs/归档.md',
         fileMatch: false,
-        headingHits: [{ level: 2, text: '部署排障' }],
+        headingHits: [{ level: 2, text: '部署排障', nth: 1 }],
         bodyMatch: false,
         bodySnippet: null
       }
@@ -71,7 +71,7 @@ describe('searchNotes', () => {
   it('同文件多标题命中合并为一条', () => {
     const hits = searchNotes(INDEX, '缓存')
     expect(hits).toHaveLength(1)
-    expect(hits[0].headingHits).toEqual([{ level: 3, text: '缓存清理' }])
+    expect(hits[0].headingHits).toEqual([{ level: 3, text: '缓存清理', nth: 1 }])
   })
 
   it('大小写不敏感', () => {
@@ -85,7 +85,7 @@ describe('searchNotes', () => {
     expect(hits[0]).toMatchObject({
       path: 'docs/归档.md',
       fileMatch: true,
-      headingHits: [{ level: 1, text: '归档总结' }]
+      headingHits: [{ level: 1, text: '归档总结', nth: 1 }]
     })
   })
 
@@ -94,7 +94,7 @@ describe('searchNotes', () => {
     const hits = searchNotes(idx, '部署')
     expect(hits[0]).toMatchObject({
       fileMatch: false,
-      headingHits: [{ level: 1, text: '部署' }],
+      headingHits: [{ level: 1, text: '部署', nth: 1 }],
       bodyMatch: true,
       bodySnippet: '部署流程见正文'
     })
@@ -229,6 +229,28 @@ describe('searchNotes 排序（票 14）', () => {
       'c.md',
       'd.md'
     ])
+  })
+})
+
+describe('findAnchorIndex（票 21）', () => {
+  const headings = [
+    { level: 1, text: '甲' },
+    { level: 2, text: '乙' },
+    { level: 1, text: '甲' },
+    { level: 2, text: '甲' }
+  ]
+
+  it('按 level+text 的第 nth 个定位（1 起）', () => {
+    expect(findAnchorIndex(headings, { level: 1, text: '甲', nth: 1 })).toBe(0)
+    expect(findAnchorIndex(headings, { level: 1, text: '甲', nth: 2 })).toBe(2)
+    expect(findAnchorIndex(headings, { level: 2, text: '甲', nth: 1 })).toBe(3)
+  })
+
+  it('nth 超出或 level/text 不匹配 → -1', () => {
+    expect(findAnchorIndex(headings, { level: 1, text: '甲', nth: 3 })).toBe(-1)
+    expect(findAnchorIndex(headings, { level: 3, text: '甲', nth: 1 })).toBe(-1)
+    expect(findAnchorIndex(headings, { level: 2, text: '丙', nth: 1 })).toBe(-1)
+    expect(findAnchorIndex([], { level: 1, text: '甲', nth: 1 })).toBe(-1)
   })
 })
 

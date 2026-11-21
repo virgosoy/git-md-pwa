@@ -441,6 +441,7 @@ body {
   cursor: default;
 }
 
+/* 票 21：结果卡是容器 div（标题行各自可点），沿用 .recent__item 外观 */
 .search-item {
   display: flex;
   flex-direction: column;
@@ -448,16 +449,46 @@ body {
   gap: 0.2rem;
 }
 
+/* 文件名主行 = 普通打开的按钮：复位 button 默认样式，保持主行观感 */
 .search-item__name {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
   font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  max-width: 100%;
 }
 
+.search-item__name:active {
+  opacity: 0.7;
+}
+
+/* 标题行 = 跳转按钮（票 21）：复位 button 默认样式 */
 .search-item__heading {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   font-size: 0.9rem;
   min-width: 0;
+  max-width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-item__heading:active {
+  opacity: 0.7;
 }
 
 .search-item__level {
