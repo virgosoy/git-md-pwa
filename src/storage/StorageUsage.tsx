@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks'
 import type { CategoryUsage, StorageUsage as Usage } from './estimate'
 import { estimateStorage } from './estimate'
 import { formatBytes } from './format'
+import { clearCachedAssets } from '../assets/store'
 
 // 设置页「本机存储」：打开时统计一次（读 IDB 四表 + Cache Storage）。
 // 任一类失败 → 该行与总量显示「—」，附重试提示，不让错误整块消失或当 0。
@@ -26,6 +27,10 @@ function sizeText(bytes: number | null): string {
 export function StorageUsage() {
   const [usage, setUsage] = useState<Usage | null>(null)
   const [failed, setFailed] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [clearing, setClearing] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [noticeError, setNoticeError] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -42,6 +47,33 @@ export function StorageUsage() {
     }
   }, [])
 
+  /** 清理后原地重算，不要求重开设置页。 */
+  async function refresh(): Promise<void> {
+    try {
+      setUsage(await estimateStorage())
+      setFailed(false)
+    } catch {
+      setFailed(true)
+    }
+  }
+
+  async function onClear(): Promise<void> {
+    setClearing(true)
+    setNotice(null)
+    try {
+      const { count, bytes } = await clearCachedAssets()
+      setNotice(`已清理 ${count} 个资源（约 ${formatBytes(bytes)}）`)
+      setNoticeError(false)
+      setConfirming(false)
+      await refresh()
+    } catch {
+      setNotice('清理失败，请重试。')
+      setNoticeError(true)
+    } finally {
+      setClearing(false)
+    }
+  }
+
   const rows = usage ? [usage.notes, usage.assets, usage.cache, usage.settings] : []
   const complete = rows.every((r): r is CategoryUsage => r !== null)
   const overhead = complete ? rows.reduce((sum, r) => sum + r.overheadBytes, 0) : null
@@ -49,6 +81,61 @@ export function StorageUsage() {
     complete && overhead !== null
       ? rows.reduce((sum, r) => sum + r.contentBytes, 0) + overhead
       : null
+  const assets = usage?.assets ?? null
+  const canClear = assets !== null && assets.count > 0
+
+  function actions() {
+    if (!assets) return null
+    return (
+      <div class="storage__actions">
+        {confirming ? (
+          <>
+            <p class="storage__confirm">
+              {`将清除 ${assets.count} 个资源（约 ${formatBytes(assets.contentBytes)}）。离线时这些图片将不再显示；联网重新打开笔记会再次下载。`}
+            </p>
+            <div class="storage__buttons">
+              <button
+                type="button"
+                class="btn btn--danger"
+                onClick={onClear}
+                disabled={clearing}
+              >
+                {clearing ? '清理中…' : '确认清理'}
+              </button>
+              <button
+                type="button"
+                class="btn"
+                onClick={() => setConfirming(false)}
+                disabled={clearing}
+              >
+                取消
+              </button>
+            </div>
+          </>
+        ) : (
+          <div class="storage__buttons">
+            <button
+              type="button"
+              class="btn"
+              onClick={() => {
+                setNotice(null)
+                setConfirming(true)
+              }}
+              disabled={!canClear}
+            >
+              清理图片等资源缓存
+            </button>
+            {!canClear && <span class="field__hint">没有已缓存的资源</span>}
+          </div>
+        )}
+        {notice && (
+          <p class={noticeError ? 'storage__notice storage__notice--error' : 'storage__notice'}>
+            {notice}
+          </p>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div class="field">
@@ -74,6 +161,8 @@ export function StorageUsage() {
             </span>
             <span class="storage__size">{sizeText(rowBytes(usage.assets))}</span>
           </div>
+
+          {actions()}
 
           <div class="storage__row">
             <span class="storage__name">应用离线缓存</span>

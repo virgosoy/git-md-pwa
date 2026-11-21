@@ -4,6 +4,7 @@
   --fg: #f4f4f5;
   --muted: #a1a1aa;
   --accent: #3f83f8;
+  --danger: #e5484d;
   --surface: #27272a;
   /* 09 单篇查找：命中高亮 / 当前命中（CSS 变量跨 shadow 边界继承到 baseNoteCss） */
   --find-hit: rgba(63, 131, 248, 0.35);
@@ -87,6 +88,12 @@ body {
 .btn--primary {
   background: var(--accent);
   border-color: var(--accent);
+  color: #fff;
+}
+
+.btn--danger {
+  background: var(--danger);
+  border-color: var(--danger);
   color: #fff;
 }
 
@@ -271,6 +278,43 @@ body {
 .storage__size {
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+
+/* 清理资源缓存：两步确认与结果提示 */
+.storage__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0.1rem 0 0.3rem;
+}
+
+.storage__buttons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.storage__buttons .btn {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.82rem;
+}
+
+.storage__confirm {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.storage__notice {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.storage__notice--error {
+  color: var(--danger);
 }
 
 /* 最近打开 */
