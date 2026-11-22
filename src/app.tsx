@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { SettingsView } from './settings/SettingsView'
 import type { AppSettings } from './settings/store'
 import { isConfigured, loadSettings, saveSettings } from './settings/store'
@@ -54,6 +54,18 @@ export function App() {
   const prevQueryEmpty = useRef(true)
   // 进搜索前的列表 scrollTop；必须在渲染切换前于 onInput 里捕获（结果列表更短，切换后会被夹小）
   const listScrollTop = useRef(0)
+  // 22 · 离开首页进阅读器时的 .app__main 滚动位置：
+  // 首页列表与阅读器共用这一个滚动容器，阅读器 flush 布局会把主容器夹到 0；
+  // 返回首页时按此值像素级还原（阅读中内链切篇不覆盖，保住最初离开首页的位置）。
+  const homeScrollTop = useRef(0)
+  const prevCurrent = useRef<OpenNote | null>(null)
+  useLayoutEffect(() => {
+    const wasReading = prevCurrent.current != null
+    prevCurrent.current = current
+    if (wasReading && current == null && mainRef.current) {
+      mainRef.current.scrollTop = homeScrollTop.current
+    }
+  }, [current])
 
   // 同步状态（票 04）
   const settingsRef = useRef<AppSettings | null>(null)
@@ -216,6 +228,8 @@ export function App() {
   }
 
   async function openNote(path: string, anchor?: HeadingAnchor): Promise<void> {
+    // 22：记录离开首页时的位置；阅读中内链切篇（current 非空）不覆盖
+    if (!current) homeScrollTop.current = mainRef.current?.scrollTop ?? 0
     const file = await getFile(path)
     if (!file || file.status !== 'ok') {
       setNotice(`「${path}」尚未镜像（超过 10MB 或尚未同步），暂时打不开。`)
