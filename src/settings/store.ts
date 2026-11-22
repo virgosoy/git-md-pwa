@@ -15,6 +15,11 @@ export interface AppSettings {
   repo: string
   /** 同步开关，默认开 */
   autoSync: boolean
+  /**
+   * 打开笔记时自动下载图片/附件资源（默认开）；关=只显示已缓存，
+   * 未缓存的不联网（点单个或「全下」才下载）
+   */
+  autoDownloadAssets: boolean
   /** 渲染数学公式（KaTeX），默认关；关/错=静默当源码 */
   renderMath: boolean
   /** 渲染 Mermaid 图表，默认关；关/错=围栏当普通代码块 */
@@ -32,6 +37,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   owner: '',
   repo: '',
   autoSync: true,
+  autoDownloadAssets: true,
   renderMath: false,
   renderMermaid: false,
   betterHeadingExtract: true,

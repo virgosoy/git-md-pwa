@@ -19,6 +19,7 @@ describe('settingsStore', () => {
     const s = await loadSettings()
     expect(s).toEqual(DEFAULT_SETTINGS)
     expect(s.autoSync).toBe(true)
+    expect(s.autoDownloadAssets).toBe(true)
     expect(s.renderMath).toBe(false)
     expect(s.renderMermaid).toBe(false)
     expect(s.tocPinned).toBe(false)
@@ -31,6 +32,7 @@ describe('settingsStore', () => {
       owner: 'me',
       repo: 'fixtures',
       autoSync: false,
+      autoDownloadAssets: false,
       renderMath: true,
       renderMermaid: true,
       betterHeadingExtract: false,
@@ -43,6 +45,7 @@ describe('settingsStore', () => {
       owner: 'me',
       repo: 'fixtures',
       autoSync: false,
+      autoDownloadAssets: false,
       renderMath: true,
       renderMermaid: true,
       betterHeadingExtract: false,
@@ -67,6 +70,7 @@ describe('settingsStore', () => {
       owner: 'a',
       repo: 'c',
       autoSync: false,
+      autoDownloadAssets: true,
       renderMath: false,
       renderMermaid: false,
       betterHeadingExtract: true,

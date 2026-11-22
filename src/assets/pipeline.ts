@@ -32,6 +32,15 @@ export function bytesToDataUrl(bytes: Uint8Array, mime: string): string {
 }
 
 /**
+ * 只读缓存：返回本机已缓存的 dataURL；未缓存 / 超限资料一律 null，**绝不联网**。
+ * 供「关闭自动下载」时回填已缓存资源（23）。
+ */
+export async function cachedAsset(path: string): Promise<string | null> {
+  const existing = await loadAsset(path)
+  return existing?.status === 'ok' ? existing.dataUrl ?? null : null
+}
+
+/**
  * 确保资源可用：返回 dataURL（可直接赋给 img/a），网络不可得/超限时为 null。
  */
 export async function ensureAsset(

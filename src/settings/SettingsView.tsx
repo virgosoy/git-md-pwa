@@ -119,6 +119,18 @@ export function SettingsView({
       <label class="field field--row">
         <input
           type="checkbox"
+          checked={form.autoDownloadAssets}
+          disabled={!loaded}
+          onChange={bindCheck('autoDownloadAssets')}
+        />
+        <span>
+          打开笔记时自动下载图片与附件资源（默认勾选；关闭后只显示已缓存资源，点单个或「全下」再下载）
+        </span>
+      </label>
+
+      <label class="field field--row">
+        <input
+          type="checkbox"
           checked={form.renderMath}
           disabled={!loaded}
           onChange={bindCheck('renderMath')}

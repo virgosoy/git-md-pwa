@@ -8,7 +8,7 @@ import { NotesList } from './notes/NotesList'
 import { buildIndex, searchNotes } from './search'
 import type { HeadingAnchor } from './search'
 import { SearchResults } from './search/SearchResults'
-import { ensureAsset } from './assets/pipeline'
+import { ensureAsset, cachedAsset } from './assets/pipeline'
 import type { AssetLoader } from './assets/wire'
 import { assetRefsFromHtml } from './assets/extract'
 import { renderNote } from './reader/render'
@@ -123,7 +123,7 @@ export function App() {
     if (!assetOwner || !assetRepo) return null
     const client = createGithubClient(assetToken ?? '')
     const repo = { owner: assetOwner, repo: assetRepo }
-    return { load: (p) => ensureAsset(client, repo, p) }
+    return { load: (p) => ensureAsset(client, repo, p), cached: (p) => cachedAsset(p) }
   }, [assetToken, assetOwner, assetRepo])
 
   async function downloadNoteAssets(): Promise<void> {
@@ -321,6 +321,7 @@ export function App() {
             onAnchorMiss={() => setNotice('未找到该标题，已从上次阅读位置打开')}
             assetLoader={assetLoader}
             refreshToken={readerTick}
+            autoDownloadAssets={settings?.autoDownloadAssets ?? true}
             renderMath={settings?.renderMath ?? false}
             renderMermaid={settings?.renderMermaid ?? false}
             tocPinned={settings?.tocPinned ?? false}

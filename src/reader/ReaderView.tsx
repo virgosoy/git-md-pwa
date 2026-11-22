@@ -30,6 +30,8 @@ const baseNoteCss = `
 .md-body a { color: #3f83f8; }
 .md-body a.is-missing { color: #a1a1aa; text-decoration: none; }
 .md-body a.is-missing::after { content: "（未镜像）"; color: #a1a1aa; font-size: 0.8em; }
+.md-body a.is-not-downloaded { color: #a1a1aa; text-decoration: none; cursor: pointer; }
+.md-body a.is-not-downloaded::after { content: "（未下载）"; color: #a1a1aa; font-size: 0.8em; }
 .md-body img { max-width: 100%; }
 .md-body table { border-collapse: collapse; }
 .md-body th, .md-body td { border: 1px solid #3f3f46; padding: 0.35rem 0.6rem; }
@@ -265,6 +267,8 @@ export interface ReaderViewProps {
   assetLoader?: AssetLoader | null
   /** 变化时触发重新装配（如「本篇资源全下」后让已缓存资源回填） */
   refreshToken?: number
+  /** 23 · 打开笔记时自动下载图片/附件；false=只显示已缓存，未缓存的点单个下载 */
+  autoDownloadAssets?: boolean
   /** 渲染数学公式（KaTeX，07a）；关/无公式正文→零依赖按需加载 */
   renderMath?: boolean
   /** 渲染 Mermaid 图表（07b）；关/无围栏→```mermaid 当普通代码块 */
@@ -288,6 +292,7 @@ export function ReaderView({
   onAnchorMiss,
   assetLoader,
   refreshToken = 0,
+  autoDownloadAssets = true,
   renderMath = false,
   renderMermaid = false,
   tocPinned = false,
@@ -455,7 +460,8 @@ export function ReaderView({
       }
       if (!alive || pathRef.current !== path) return
       mdBody.innerHTML = html
-      if (assetLoader) void wireAssets(shadowEl, path, assetLoader)
+      if (assetLoader)
+        void wireAssets(shadowEl, path, assetLoader, { autoDownload: autoDownloadAssets })
       // 07b：Mermaid 装配（异步按需加载；alive+pathRef 守卫，切走不写回旧图）
       if (renderMermaid && mayHaveMermaid(content)) {
         void wireMermaid(mdBody, { alive: () => alive && pathRef.current === path })
@@ -495,7 +501,7 @@ export function ReaderView({
       alive = false
       detachToc()
     }
-  }, [path, content, initialScrollTop, assetLoader, refreshToken, renderMath, renderMermaid])
+  }, [path, content, initialScrollTop, assetLoader, refreshToken, autoDownloadAssets, renderMath, renderMermaid])
 
   return (
     <>

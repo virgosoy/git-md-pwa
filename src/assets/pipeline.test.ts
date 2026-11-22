@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import type { GithubClient, Repository } from '../github/client'
-import { ensureAsset, bytesToDataUrl, mimeFromPath } from './pipeline'
-import { loadAsset } from './store'
+import { ensureAsset, cachedAsset, bytesToDataUrl, mimeFromPath } from './pipeline'
+import { loadAsset, saveAsset } from './store'
 import { wipeDb } from '../test/wipeDb'
 
 // S3 · 资源管线：缓存命中零网络、首次拉取建缓存、>10MB 标占位
@@ -68,5 +68,27 @@ describe('ensureAsset', () => {
     expect(bytesToDataUrl(new Uint8Array([104, 105]), 'image/png')).toBe(
       'data:image/png;base64,aGk='
     )
+  })
+})
+
+describe('cachedAsset（只读缓存，绝不联网）', () => {
+  beforeEach(async () => {
+    await wipeDb()
+  })
+
+  it('已缓存 ok → 返回 dataURL；未缓存 / too-large → null', async () => {
+    expect(await cachedAsset('notes/img/a.png')).toBeNull()
+
+    await saveAsset({
+      path: 'notes/img/a.png',
+      dataUrl: 'data:image/png;base64,AAA=',
+      size: 3,
+      status: 'ok',
+      savedAt: 0
+    })
+    await saveAsset({ path: 'notes/img/big.png', size: 99, status: 'too-large', savedAt: 0 })
+
+    expect(await cachedAsset('notes/img/a.png')).toBe('data:image/png;base64,AAA=')
+    expect(await cachedAsset('notes/img/big.png')).toBeNull()
   })
 })
