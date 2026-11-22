@@ -1,5 +1,8 @@
 {
   "enabledPlugins": {
     "mattpocock-skills@claude-plugins-official": true
+  },
+  "worktree": {
+    "bgIsolation": "none"
   }
 }
