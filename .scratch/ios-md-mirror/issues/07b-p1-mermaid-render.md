@@ -1,4 +1,4 @@
-Status: open
+Status: resolved
 Type: task
 Blocked by: 07a-p1-formula-render
 
@@ -31,3 +31,8 @@ Blocked by: 07a-p1-formula-render
 - 开关默认关；关 → ` ```mermaid ` 显示为代码块。
 - 开 → flowchart/sequence/pie 离线出 SVG；非法语法 → 源码 + 错误标，不崩。
 - iPhone 14 / iOS16.1.1 真机出图（本票阻塞在据此判定兼容，不接受跳票到 `待定`）。
+
+## 验收结果
+
+- 2026-11-23 iPhone 真机 flowchart 正常出图，验收通过，票关闭。
+- KaTeX 公式（票 07a）的真机显示验收延后（记入 draft.md）。

@@ -54,3 +54,4 @@ Type: task
 - 测试：+8 → 全量 286/286 绿（38 文件）；`typecheck` ✓；`build` ✓（111 预缓存，5.67 MiB）。新增/更新：`extract-headings.test.ts` 补 nth + 行内标记剥纯文本 + 重复标题 nth；`search.test.ts` 补 nth + `findAnchorIndex` 两组；`ReaderView.test.tsx` 锚点命中（scrollTop = 阅读位置 - 12）/未命中（保留位置 + miss 回调）；`app.search.test.tsx` 点标题行打开并跳转（锚点覆盖阅读位置 500→488）、定位失败弹提示并在 4.2s 后自动消失。
 - 文档：`GLOSSARY.md` 全局搜索条目补「标题行可点击跳转」；`CLAUDE.md` 架构表 search 行补文本口径与跳转。
 - 隐私自查：未新增任何 owner/repo/令牌读写；测试 fixture 仍为哑值（`me/fixtures`、`ghp_test_dummy`）。
+- 2026-11-23 iPhone 真机验收通过（用户确认 OK）。
