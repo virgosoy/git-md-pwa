@@ -35,6 +35,31 @@ function buttonByText(c: HTMLElement, text: string): HTMLButtonElement | undefin
     | undefined
 }
 
+/** 票 24：「全下」回填有 300ms 防抖，等待时要给真实定时器留出时间（waitFor 只轮询微任务）。 */
+async function waitUntil(predicate: () => boolean, ms = 2000): Promise<void> {
+  const deadline = Date.now() + ms
+  while (!predicate() && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 10))
+  }
+}
+
+function imgSrcs(c: HTMLElement): string[] {
+  return [...(shadowOf(c)?.querySelectorAll('img') ?? [])].map(
+    (img) => img.getAttribute('src') ?? ''
+  )
+}
+
+function okResponse(bytes: number[]): Response {
+  return {
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    arrayBuffer: async () => new Uint8Array(bytes).buffer,
+    json: async () => ({}),
+    text: async () => 'hi'
+  } as unknown as Response
+}
+
 describe('23 · 资源自动下载开关（集成）', () => {
   let assetUrls: string[]
 
@@ -86,12 +111,58 @@ describe('23 · 资源自动下载开关（集成）', () => {
     expect(assetUrls).toEqual([])
 
     buttonByText(c, '全下')!.click()
-    await waitFor(
+    await waitUntil(
       () => (shadowOf(c)?.querySelector('img')?.getAttribute('src') ?? '').startsWith('data:image/png')
     )
     expect(assetUrls.length).toBe(1)
     expect(shadowOf(c)!.querySelector('img')!.getAttribute('src')).toBe(
       'data:image/png;base64,aGk='
     )
+  })
+
+  it('「全下」逐项回填：慢资源不阻塞快的，按钮显示「下载中…」并在结束后复原', async () => {
+    await saveSettings({
+      token: '',
+      owner: 'me',
+      repo: 'fixtures',
+      autoSync: false,
+      autoDownloadAssets: false
+    })
+    await upsertFile(file('b.md', '# 乙\n\n![快](img/fast.png)\n\n![慢](img/slow.png)'))
+
+    let releaseSlow: () => void = () => {}
+    const slowGate = new Promise<void>((resolve) => {
+      releaseSlow = resolve
+    })
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('img/slow.png')) {
+        await slowGate
+        return okResponse([115, 108]) // "sl"
+      }
+      return okResponse([102, 97]) // "fa"
+    })
+
+    const c = document.createElement('div')
+    document.body.appendChild(c)
+    render(<App />, c)
+
+    await waitUntil(() => buttonByText(c, 'b.md') != null)
+    buttonByText(c, 'b.md')!.click()
+    await waitUntil(() => shadowOf(c)?.querySelectorAll('img').length === 2)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(imgSrcs(c)).toEqual([NOT_LOADED_IMG, NOT_LOADED_IMG])
+
+    buttonByText(c, '全下')!.click()
+    // 慢资源还挂着：快的应先回填，按钮保持「下载中…」
+    await waitUntil(() => imgSrcs(c)[0].startsWith('data:image/png'))
+    expect(imgSrcs(c)).toEqual(['data:image/png;base64,ZmE=', NOT_LOADED_IMG])
+    expect(buttonByText(c, '下载中…')?.disabled).toBe(true)
+
+    releaseSlow()
+    await waitUntil(() => imgSrcs(c).every((s) => s.startsWith('data:image/png')))
+    expect(imgSrcs(c)).toEqual(['data:image/png;base64,ZmE=', 'data:image/png;base64,c2w='])
+    await waitUntil(() => buttonByText(c, '全下') != null)
+    expect(buttonByText(c, '全下')!.disabled).toBe(false)
   })
 })

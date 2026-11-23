@@ -37,6 +37,9 @@ const SCROLL_SAVE_DELAY = 300
 /** notice 自动消失时长（票 21：阅读器里也会出现，不再常驻） */
 const NOTICE_AUTO_DISMISS_MS = 4000
 
+/** 「全下」逐项回填的防抖间隔（票 24：多个资源同时落地只重建一次 shadow） */
+const ASSET_REFRESH_DEBOUNCE_MS = 300
+
 export function App() {
   const updates = useUpdate()
   const [settings, setSettings] = useState<AppSettings | null>(null)
@@ -85,6 +88,25 @@ export function App() {
   )
   const hits = useMemo(() => searchNotes(index, query), [index, query])
   const [readerTick, setReaderTick] = useState(0)
+  // 24 · 「全下」进行中：按钮置灰并显示「下载中…」。状态带笔记路径 + 批次序号：
+  // 切走笔记后旧批次不再影响新笔记（不能用会与点击竞速的 path effect 来重置）。
+  const [downloadingAssets, setDownloadingAssets] = useState<{
+    path: string
+    seq: number
+  } | null>(null)
+  const downloadSeq = useRef(0)
+  const assetRefreshTimer = useRef<number | null>(null)
+  const currentPathRef = useRef<string | null>(null)
+  currentPathRef.current = current?.path ?? null
+
+  useEffect(() => {
+    return () => {
+      if (assetRefreshTimer.current != null) {
+        window.clearTimeout(assetRefreshTimer.current)
+        assetRefreshTimer.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const nowEmpty = query.trim() === ''
@@ -126,12 +148,44 @@ export function App() {
     return { load: (p) => ensureAsset(client, repo, p), cached: (p) => cachedAsset(p) }
   }, [assetToken, assetOwner, assetRepo])
 
+  /** 24 · 下载中按防抖触发回填：多个资源同时落地时只重建一次 shadow。 */
+  function scheduleAssetRefresh(path: string, seq: number): void {
+    if (assetRefreshTimer.current != null) return
+    assetRefreshTimer.current = window.setTimeout(() => {
+      assetRefreshTimer.current = null
+      // 切走笔记 / 又点了一次「全下」：旧批次不再驱动当前笔记重建
+      if (seq === downloadSeq.current && currentPathRef.current === path) {
+        setReaderTick((t) => t + 1)
+      }
+    }, ASSET_REFRESH_DEBOUNCE_MS)
+  }
+
   async function downloadNoteAssets(): Promise<void> {
     if (!current || !assetLoader) return
-    const refs = assetRefsFromHtml(renderNote(current.content), current.path)
-    // 单条失败不影响其它资源；整体用 catch 兜住 unhandled rejection
-    await Promise.all(refs.map((r) => assetLoader!.load(r.path).catch(() => null)))
-    setReaderTick((t) => t + 1)
+    const { path, content } = current
+    const refs = assetRefsFromHtml(renderNote(content), path)
+    if (refs.length === 0) return
+    const seq = ++downloadSeq.current
+    setDownloadingAssets({ path, seq })
+    try {
+      // 24：每个资源独立落地就回填，不等最慢的；失败项保持「未下载」可重试
+      await Promise.all(
+        refs.map(async (r) => {
+          await assetLoader!.load(r.path).catch(() => null)
+          if (seq === downloadSeq.current) scheduleAssetRefresh(path, seq)
+        })
+      )
+    } finally {
+      if (seq === downloadSeq.current) {
+        // 最后一批可能还在防抖窗口内：清掉并立刻刷一次，保证按钮复原时已回填
+        if (assetRefreshTimer.current != null) {
+          window.clearTimeout(assetRefreshTimer.current)
+          assetRefreshTimer.current = null
+        }
+        setDownloadingAssets((s) => (s?.seq === seq ? null : s))
+        if (currentPathRef.current === path) setReaderTick((t) => t + 1)
+      }
+    }
   }
 
   useEffect(() => {
@@ -252,6 +306,8 @@ export function App() {
   }
 
   const configured = settings != null && isConfigured(settings)
+  const downloadingThisNote =
+    downloadingAssets != null && current != null && downloadingAssets.path === current.path
 
   return (
     <div class="app">
@@ -263,8 +319,12 @@ export function App() {
             </button>
             <h1 class="app__title app__title--trunc">{current.path}</h1>
             <div class="app__actions">
-              <button class="btn" onClick={() => void downloadNoteAssets()}>
-                全下
+              <button
+                class="btn"
+                onClick={() => void downloadNoteAssets()}
+                disabled={downloadingThisNote}
+              >
+                {downloadingThisNote ? '下载中…' : '全下'}
               </button>
               {/* 09 单篇查找入口：PWA 独立模式无 Safari 原生 find，查找在应用内 */}
               <button
