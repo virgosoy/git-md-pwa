@@ -8,7 +8,7 @@ import { useLayoutEffect, useRef, useState } from 'preact/hooks'
 import { renderNote, mayHaveMath, mayHaveMermaid, createMd } from './render'
 import type { MathEngine } from './render'
 import { wireMermaid } from './mermaid'
-import { assignHeadingIds, headingScrollTarget, currentHeadingIndex, filterHeadings, type TocHeading } from './toc'
+import { assignHeadingIds, headingScrollTarget, currentHeadingIndex, filterHeadings, isHeadingRendered, type TocHeading } from './toc'
 import { findAnchorIndex } from '../search'
 import type { HeadingAnchor } from '../search'
 import { classifyLink, resolveNotePath } from './links'
@@ -489,8 +489,11 @@ export function ReaderView({
         const anchor = anchorRef.current
         if (anchor) {
           const idx = findAnchorIndex(toc, anchor)
-          if (idx >= 0) hostEl.scrollTop = headingScrollTarget(hostEl, toc[idx].el)
-          else onAnchorMissRef.current?.(anchor)
+          // 21 追加：找到文本但标题没参与布局（如被未闭合 <dialog> 吞进 display:none）→
+          // 按未命中降级；否则 headingScrollTarget 会拿零几何算出一个随阅读位置变化的假落点。
+          if (idx >= 0 && isHeadingRendered(toc[idx].el)) {
+            hostEl.scrollTop = headingScrollTarget(hostEl, toc[idx].el)
+          } else onAnchorMissRef.current?.(anchor)
         }
       }
       // 09：shadow 重建后按当前 query 重放高亮（find 状态下 全下/刷新 不丢查找）

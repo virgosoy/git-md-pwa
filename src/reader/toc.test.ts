@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import {
   slugify,
   assignHeadingIds,
   headingScrollTarget,
+  isHeadingRendered,
   filterHeadings,
   currentHeadingIndex,
   type TocHeading
@@ -152,5 +153,35 @@ describe('headingScrollTarget / currentHeadingIndex', () => {
     expect(currentHeadingIndex([50, 200.99], 200)).toBe(1)
     // 不提前：还差 1px 才到目标 200 时，不越级高亮
     expect(currentHeadingIndex([50, 200], 199)).toBe(0)
+  })
+})
+
+// 21 追加 · 文本匹配到但标题没有布局盒子（被未闭合 <dialog> 等原始 HTML 吞掉）时，
+// 不能按几何跳转（会拿零几何算出一个随阅读位置变化的假落点）。
+describe('isHeadingRendered（票 21 追加）', () => {
+  const docEl = document.documentElement as HTMLElement & {
+    getClientRects: () => DOMRectList
+  }
+  const origDocRects = docEl.getClientRects
+
+  afterEach(() => {
+    docEl.getClientRects = origDocRects
+    document.body.innerHTML = ''
+  })
+
+  it('有布局环境：标题无盒子 → false；有盒子 → true', () => {
+    docEl.getClientRects = () => [{} as DOMRect] as unknown as DOMRectList
+    const h = document.createElement('h2')
+    h.getClientRects = () => [] as unknown as DOMRectList
+    expect(isHeadingRendered(h)).toBe(false)
+
+    h.getClientRects = () => [{} as DOMRect] as unknown as DOMRectList
+    expect(isHeadingRendered(h)).toBe(true)
+  })
+
+  it('无布局环境（jsdom 默认）：不能据判，按可见处理', () => {
+    const h = document.createElement('h2')
+    // jsdom 的 getClientRects 恒空，若据判会把所有标题误判成不可见
+    expect(isHeadingRendered(h)).toBe(true)
   })
 })

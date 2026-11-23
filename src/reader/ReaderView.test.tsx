@@ -691,4 +691,35 @@ describe('初始锚点跳转（票 21）', () => {
     const host = c.querySelector('.reader') as HTMLElement
     expect(host.scrollTop).toBe(123)
   })
+
+  // 21 追加：文本匹配到但标题没有布局盒子（被未闭合 <dialog> 吞进 display:none）。
+  // 此时按几何跳转会落到「上次阅读位置 - 固定值」的假位置，每次都不一样；必须降级为未命中。
+  it('匹配到但标题不可见（无布局盒子）→ 按未命中降级：保留阅读位置并回调 miss', async () => {
+    const miss = vi.fn()
+    const docEl = document.documentElement as HTMLElement & {
+      getClientRects: () => DOMRectList
+    }
+    const origDocRects = docEl.getClientRects
+    // 模拟真实浏览器（documentElement 有布局盒子）；jsdom 里元素 getClientRects 恒空，
+    // 于是正文里的目标标题被判为「没有布局盒子」
+    docEl.getClientRects = () => [{} as DOMRect] as unknown as DOMRectList
+    try {
+      const c = mount(
+        <ReaderView
+          path="a.md"
+          content={NOTE_DUP}
+          initialScrollTop={123}
+          initialAnchor={{ level: 2, text: '二', nth: 2 }}
+          onAnchorMiss={miss}
+          onOpenNote={() => {}}
+        />
+      )
+      await flush()
+      expect(miss).toHaveBeenCalledWith({ level: 2, text: '二', nth: 2 })
+      const host = c.querySelector('.reader') as HTMLElement
+      expect(host.scrollTop).toBe(123)
+    } finally {
+      docEl.getClientRects = origDocRects
+    }
+  })
 })

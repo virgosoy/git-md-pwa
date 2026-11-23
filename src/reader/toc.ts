@@ -78,3 +78,18 @@ export function currentHeadingIndex(targets: number[], scrollTop: number): numbe
   }
   return idx
 }
+
+/**
+ * 21 追加 · 标题是否真的参与布局（能当跳转目标）。
+ * 原始 HTML 放行（ADR-0002）时，正文里一个未闭合的 `<dialog>` 会把后续整段内容吞进
+ * `display:none` 的 dialog：标题文本仍能匹配 `findAnchorIndex`，但没有布局盒子。
+ * 此时按几何滚动会落到一个由「上次阅读位置」算出的假位置（用户看到的就是
+ * 「每次返回后点同一个标题，位置都不一样」）。这类标题应走未命中降级（提示 + 保留位置）。
+ *
+ * 无布局环境（jsdom）里 getClientRects 恒为空，不能据判，按可见处理。
+ */
+export function isHeadingRendered(el: Element): boolean {
+  const doc = el.ownerDocument
+  if (doc.documentElement.getClientRects().length === 0) return true
+  return el.getClientRects().length > 0
+}
