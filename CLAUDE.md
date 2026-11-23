@@ -46,6 +46,7 @@ This repository is **public** (GitHub Pages hosting requires it). It must never 
 ### 关键规则
 
 - **隐私红线**见上节；写任何会被 commit 的文档/代码前自查一遍。
+- **兼容基线**：目标设备 **iPhone 14 / iOS 16.1.1 Safari（主屏 PWA）**，构建目标 `es2022`。写代码/选依赖前查 caniuse/MDN，**不用 Safari 17+ 才有的接口**（如 `navigator.storage.estimate`、`Element.checkVisibility`）；不支持的能力要么降级/自实现（先例：`src/storage/estimate.ts`、`src/reader/toc.ts` 的 `isHeadingRendered` 用 `getClientRects`），要么在票里写明等 iOS 升级。
 - 改 DB schema 只在 `src/idb.ts`；改部署路径同时改 `vite.config.ts` 的 `base` 与 manifest `start_url`（当前 `/git-md-pwa/`）。
 - 线上 = GitHub Pages 子路径；发布靠 push `main` → `.github/workflows/pages.yml`。
 - 手机 PWA「打开还是旧版」排查：先 `git fetch https://github.com/<owner>/<repo> main` 比对远端（本地=远端 → 部署无误，问题在设备侧）；部署正常仍旧 → 多为 **iOS 对已装主屏 PWA 守旧 SW（不会自己好）**，验收=重装（删图标 → Safari 清除站点数据 → 重开 → 重加）。本版 workbox **无 `updateViaCache` 选项，勿加**——浏览器默认对 SW 主脚本做网络重校验。
