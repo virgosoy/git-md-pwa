@@ -7,7 +7,10 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { useRegisterSW } from 'virtual:pwa-register/preact'
 import type { RegisterSWOptions } from 'vite-plugin-pwa/types'
 import { loadSettings, saveSettings } from '../settings/store'
+import { withTimeout } from '../lib/async'
 import { bannerNeeded, CURRENT_APP_VERSION, fetchLiveVersion } from './version'
+import { applyNotReadyNote, manualCheckNote, type UpdateReadiness } from './manualNote'
+import { detectInstalledBuild, type InstalledBuild } from './installed'
 
 /** 在线时周期复查 SW 更新的间隔（Q4：启动 + 周期） */
 const PERIODIC_CHECK_MS = 10 * 60_000
@@ -18,6 +21,10 @@ const UPDATE_INSTALL_TIMEOUT_MS = 30_000
 const UPDATE_CHECK_TIMEOUT_MS = 15_000
 /** installed 之后进入 registration.waiting 的宽限 */
 const WAITING_SETTLE_MS = 2_000
+/** 注册回调没来、主动 getRegistration() 的上限（本地操作，只防悬挂） */
+const GET_REGISTRATION_TIMEOUT_MS = 2_000
+/** 手动检查提示的显示时长（「已装好，重开」这类长句需要读完） */
+const MANUAL_NOTE_TTL_MS = 8_000
 
 /** 等 worker 变为 installed：update() 只保证「发现并开始安装」 */
 function whenInstalled(worker: ServiceWorker): Promise<boolean> {
@@ -37,16 +44,6 @@ function whenInstalled(worker: ServiceWorker): Promise<boolean> {
   })
 }
 
-function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
-  return new Promise((resolve) => {
-    const timer = window.setTimeout(() => resolve(fallback), ms)
-    void p.then((v) => {
-      window.clearTimeout(timer)
-      resolve(v)
-    })
-  })
-}
-
 async function waitForWaiting(reg: ServiceWorkerRegistration, ms: number): Promise<boolean> {
   const deadline = Date.now() + ms
   while (!reg.waiting) {
@@ -56,14 +53,14 @@ async function waitForWaiting(reg: ServiceWorkerRegistration, ms: number): Promi
   return true
 }
 
-/** 更新检查结果：ready=有 waiting SW 可接管；pending=新 SW 还在安装；none=没有新构建 */
-type UpdateReadiness = 'ready' | 'pending' | 'none'
-
 /**
  * 触发一次 SW 更新检查，并等新 worker 真正进入 waiting。
  * 根因防线：prompt 客户端的 updateServiceWorker() = messageSkipWaiting()，
  * 只有 registration.waiting 存在时才有接收方；update() 是异步的，且只保证
  * 「已开始安装」。等不到 waiting 就亮横幅/刷新 → 点了毫无反应。
+ *
+ * up-to-date 只说明「线上 sw.js == 当前 SW」；页面可能仍跑旧构建，
+ * 那是 detectInstalledBuild() 的事，别在这里下结论。
  */
 async function ensureUpdateReady(reg: ServiceWorkerRegistration): Promise<UpdateReadiness> {
   if (reg.waiting) return 'ready'
@@ -83,8 +80,8 @@ async function ensureUpdateReady(reg: ServiceWorkerRegistration): Promise<Update
         UPDATE_CHECK_TIMEOUT_MS,
         'timeout' as const
       )
-      if (result === 'fail') return 'none'
-      if (result === 'timeout' && !reg.waiting && !reg.installing) return 'pending'
+      if (result === 'fail') return 'failed'
+      if (result === 'timeout' && !reg.waiting && !reg.installing) return 'timeout'
       if (!updateFound && !reg.waiting && !reg.installing) {
         // 有的 WebKit 先 resolve update()、再派发 updatefound：让事件有机会落地
         await new Promise((r) => window.setTimeout(r, 0))
@@ -95,15 +92,15 @@ async function ensureUpdateReady(reg: ServiceWorkerRegistration): Promise<Update
   }
   if (reg.waiting) return 'ready'
   const installing = reg.installing
-  if (!installing) return 'none'
+  if (!installing) return 'up-to-date'
   const installed = await withTimeout(
     whenInstalled(installing),
     UPDATE_INSTALL_TIMEOUT_MS,
     false
   )
-  if (!installed) return reg.waiting ? 'ready' : reg.installing ? 'pending' : 'none'
+  if (!installed) return reg.waiting ? 'ready' : reg.installing ? 'pending' : 'up-to-date'
   if (await waitForWaiting(reg, WAITING_SETTLE_MS)) return 'ready'
-  return reg.installing ? 'pending' : 'none'
+  return reg.installing ? 'pending' : 'up-to-date'
 }
 
 export interface UpdateState {
@@ -139,6 +136,33 @@ export function useUpdate(): UpdateState & UpdateActions {
   const [lastCheckedAt, setLastCheckedAt] = useState<number | null>(null)
   const registrationRef = useRef<ServiceWorkerRegistration | null>(null)
   const runningVersionRef = useRef(CURRENT_APP_VERSION)
+
+  /** 瞬时反馈文案：设置页那行提示，到点自动收起 */
+  function showNote(note: string | null, ttlMs: number): void {
+    setLatestNote(note)
+    if (note !== null) {
+      window.setTimeout(() => setLatestNote(null), ttlMs)
+    }
+  }
+
+  /**
+   * 手动检查用：注册回调（onRegisteredSW）还没来时代取一次 registration。
+   * iOS 上注册/回调可能晚到；拿不到 registration 不代表没有新版本，只能如实报「尚未就绪」。
+   */
+  async function resolveRegistration(): Promise<ServiceWorkerRegistration | null> {
+    if (registrationRef.current) return registrationRef.current
+    const sw = typeof navigator === 'undefined' ? undefined : navigator.serviceWorker
+    if (!sw || typeof sw.getRegistration !== 'function') return null
+    let pending: Promise<ServiceWorkerRegistration | undefined>
+    try {
+      pending = sw.getRegistration()
+    } catch {
+      return null
+    }
+    const reg = await withTimeout(pending, GET_REGISTRATION_TIMEOUT_MS, undefined)
+    if (reg) registrationRef.current = reg
+    return reg ?? null
+  }
 
   /** 自动路径：needRefresh（新 SW 在 waiting）→ 取线上版本 → Q8 只提示一次闸门 */
   async function showAutoBanner(): Promise<void> {
@@ -178,14 +202,11 @@ export function useUpdate(): UpdateState & UpdateActions {
 
   async function applyUpdate(): Promise<void> {
     if (!banner) return
-    const reg = registrationRef.current
-    const readiness = reg ? await ensureUpdateReady(reg) : 'none'
+    const reg = await resolveRegistration()
+    const readiness = reg ? await ensureUpdateReady(reg) : 'unavailable'
     if (readiness !== 'ready') {
       // 没有可接管的 waiting SW 时绝不假装刷新：保住横幅，让用户稍后重试
-      setLatestNote(
-        readiness === 'pending' ? '更新正在下载，请稍后再试' : '更新还没准备好，请稍后再试'
-      )
-      window.setTimeout(() => setLatestNote(null), 4000)
+      showNote(applyNotReadyNote(readiness), 4000)
       return
     }
     await persistPrompted(banner.live)
@@ -221,33 +242,37 @@ export function useUpdate(): UpdateState & UpdateActions {
     if (checking) return
     setChecking(true)
     try {
-      const reg = registrationRef.current
+      const reg = await resolveRegistration()
       // 版本号（version.json）只用来给横幅标注；能否更新一律以 SW 是否真正可接管为准。
-      // 只改了文档的提交会让 version.json 变、sw.js 字节不变，旧逻辑据此弹横幅，
-      // 点刷新却没有 waiting SW 可接管 → 静默无反应。
+      // 只改文档的提交会让 version.json 变、sw.js 字节不变；update() 没发现新 worker 时
+      // 不能据此谎称「有更新」，但也不能说成「没有更新」——页面可能还跑旧构建。
       const [live, readiness] = await Promise.all([
         fetchLiveVersion(),
-        reg ? ensureUpdateReady(reg) : Promise.resolve<UpdateReadiness>('none')
+        reg ? ensureUpdateReady(reg) : Promise.resolve<UpdateReadiness>('unavailable')
       ])
       setLastCheckedAt(Date.now())
       if (readiness === 'ready') {
         // 线上确实有新 SW 可接管：verbose，不经过 lastPrompted 闸门
-        setLatestNote(null)
+        showNote(null, 0)
         setBanner({ live })
-      } else {
-        setBanner(null)
-        setLatestNote(
-          readiness === 'pending'
-            ? '更新正在下载，请稍后再试'
-            : live === null
-              ? '检查失败，稍后再试'
-              : live !== runningVersionRef.current
-                ? // 线上版本已变但本机拿不到新 SW：部署/CDN 尚未同步，或只有非代码变更
-                  '线上版本与本机不同，暂无可安装的更新包'
-                : '已是最新版本'
-        )
-        window.setTimeout(() => setLatestNote(null), 4000)
+        return
       }
+      setBanner(null)
+      // SW 已落后于线上、但页面可能还跑旧构建：读本机预缓存判断「是不是已装好只差重开」。
+      // 版本串相同或还在安装时不必读（没有可判定的分歧）。
+      const installed: InstalledBuild =
+        readiness !== 'pending' && (live === null || live !== runningVersionRef.current)
+          ? await detectInstalledBuild()
+          : 'unknown'
+      showNote(
+        manualCheckNote({
+          readiness,
+          live,
+          running: runningVersionRef.current,
+          installed
+        }),
+        MANUAL_NOTE_TTL_MS
+      )
     } finally {
       setChecking(false)
     }

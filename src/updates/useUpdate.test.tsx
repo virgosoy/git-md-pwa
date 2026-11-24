@@ -97,6 +97,40 @@ function sel(name: string): HTMLElement {
   return container.querySelector(`[data-sel="${name}"]`) as HTMLElement
 }
 
+/** 预置「当前页面正在跑的脚本」：detectInstalledBuild 用它和预缓存首页对比 */
+function stubRunningScript(scriptSrc: string): void {
+  const el = document.createElement('script')
+  el.src = scriptSrc
+  document.head.appendChild(el)
+}
+
+/** 预置「页面受 SW 控制」：没有 controller 时检测器无法下结论 */
+function stubController(): void {
+  Object.defineProperty(navigator, 'serviceWorker', {
+    configurable: true,
+    value: { controller: {} }
+  })
+}
+
+/** 预置 Workbox 预缓存的首页副本（每个脚本一份 index.html 修订） */
+function stubPrecacheIndex(...scriptSrcs: string[]): void {
+  const indexUrl = new URL('index.html', document.baseURI).href
+  const entries = scriptSrcs.map((src, i) => ({
+    request: { url: `${indexUrl}?__WB_REVISION__=${i}` },
+    html: `<!doctype html><html><head><script type="module" src="${src}"></script></head></html>`
+  }))
+  vi.stubGlobal('caches', {
+    keys: vi.fn(async () => ['workbox-precache-v2-test']),
+    open: vi.fn(async () => ({
+      keys: vi.fn(async () => entries.map((entry) => entry.request)),
+      match: vi.fn(async (request: { url: string }) => {
+        const hit = entries.find((entry) => entry.request.url === request.url)
+        return hit ? new Response(hit.html) : undefined
+      })
+    }))
+  })
+}
+
 /** 线上 version.json 返回固定版本 */
 function stubLive(version: string | null, fail = false): void {
   vi.stubGlobal(
@@ -123,6 +157,8 @@ describe('useUpdate', () => {
 
   afterEach(() => {
     document.body.innerHTML = ''
+    document.head.innerHTML = ''
+    delete (navigator as unknown as { serviceWorker?: unknown }).serviceWorker
     vi.unstubAllGlobals()
     vi.useRealTimers()
   })
@@ -212,7 +248,7 @@ describe('useUpdate', () => {
     expect(sel('banner').textContent).toBe(LIVE)
   })
 
-  it('手动检查：线上版本变了但 SW 无新 worker → 不弹横幅，提示更新包未就绪', async () => {
+  it('手动检查：线上版本变了、SW 无新 worker、读不到预缓存 → 合并兜底文案', async () => {
     stubLive(LIVE) // LIVE ≠ CURRENT_APP_VERSION，旧逻辑会据此弹横幅
     await saveSettings({ lastPromptedVersion: OLD })
     mountHost()
@@ -221,8 +257,98 @@ describe('useUpdate', () => {
     sel('check').click()
     await flush()
     expect(sel('banner').textContent).toBe('none')
-    expect(sel('note').textContent).toBe('线上版本与本机不同，暂无可安装的更新包')
+    expect(sel('note').textContent).toBe(
+      `线上已有 ${LIVE}（本机 ${CURRENT_APP_VERSION}）。如果刚更新过，请把 App 彻底关掉再打开；否则请稍后再试`
+    )
     expect(reg.update).toHaveBeenCalledTimes(1)
+  })
+
+  it('手动检查：SW 无新 worker、但预缓存已是另一份构建 → 提示已装好、彻底关掉 App 重开', async () => {
+    stubLive(LIVE)
+    await saveSettings({ lastPromptedVersion: OLD })
+    stubRunningScript('assets/index-old.js')
+    stubController()
+    stubPrecacheIndex('./assets/index-new.js')
+    mountHost()
+    const reg = new FakeReg()
+    registerReg(reg)
+    sel('check').click()
+    await flush()
+    expect(sel('banner').textContent).toBe('none')
+    expect(sel('note').textContent).toBe(
+      `新版本 ${LIVE} 已装好，请把 App 彻底关掉（上滑关闭）再重新打开`
+    )
+  })
+
+  it('手动检查：预缓存就是当前构建 → 线上版本串变了但本机没拿到更新包', async () => {
+    stubLive(LIVE)
+    await saveSettings({ lastPromptedVersion: OLD })
+    stubRunningScript('assets/index-same.js')
+    stubController()
+    stubPrecacheIndex('./assets/index-same.js')
+    mountHost()
+    const reg = new FakeReg()
+    registerReg(reg)
+    sel('check').click()
+    await flush()
+    expect(sel('banner').textContent).toBe('none')
+    expect(sel('note').textContent).toBe(`线上已有 ${LIVE}，但本机还没拿到更新包，请稍后再试`)
+  })
+
+  it('手动检查：预缓存同时有旧/新两份首页（新 SW 等着接管）→ 判定已装好', async () => {
+    stubLive(LIVE)
+    await saveSettings({ lastPromptedVersion: OLD })
+    stubRunningScript('assets/index-old.js')
+    stubController()
+    stubPrecacheIndex('./assets/index-old.js', './assets/index-new.js')
+    mountHost()
+    const reg = new FakeReg()
+    registerReg(reg)
+    sel('check').click()
+    await flush()
+    expect(sel('note').textContent).toBe(
+      `新版本 ${LIVE} 已装好，请把 App 彻底关掉（上滑关闭）再重新打开`
+    )
+  })
+
+  it('手动检查：拿不到 registration → 提示更新检查尚未就绪', async () => {
+    stubLive(LIVE)
+    await saveSettings({ lastPromptedVersion: OLD })
+    mountHost()
+    sel('check').click()
+    await flush()
+    expect(sel('banner').textContent).toBe('none')
+    expect(sel('note').textContent).toBe('更新检查尚未就绪，请稍后再试')
+  })
+
+  it('手动检查：注册回调没来但 getRegistration() 能拿到 waiting SW → 照常弹横幅', async () => {
+    stubLive(LIVE)
+    await saveSettings({ lastPromptedVersion: OLD })
+    const reg = new FakeReg()
+    reg.waiting = new FakeWorker('installed')
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: { getRegistration: vi.fn(async () => reg) }
+    })
+    mountHost() // 不调用 registerReg：registrationRef 为空
+    sel('check').click()
+    await flush()
+    expect(sel('banner').textContent).toBe(LIVE)
+  })
+
+  it('手动检查：update() 网络失败 → 明确说检查失败，不混成「无可安装的更新包」', async () => {
+    stubLive(LIVE)
+    await saveSettings({ lastPromptedVersion: OLD })
+    mountHost()
+    const reg = new FakeReg()
+    reg.update = vi.fn(async () => {
+      throw new Error('offline')
+    })
+    registerReg(reg)
+    sel('check').click()
+    await flush()
+    expect(sel('banner').textContent).toBe('none')
+    expect(sel('note').textContent).toBe('检查更新失败，请稍后再试')
   })
 
   it('手动检查：同版本已提示也照弹（verbose 逃生舱）', async () => {
@@ -247,13 +373,18 @@ describe('useUpdate', () => {
     expect(sel('note').textContent).toBe('已是最新版本')
   })
 
-  it('手动检查：取不到线上 → 检查失败反馈', async () => {
-    stubLive(LIVE, true)
+  it('手动检查：更新检查失败且取不到线上 → 检查失败反馈', async () => {
+    stubLive(LIVE, true) // 离线：version.json 拉取也抛错
     mountHost()
+    const reg = new FakeReg()
+    reg.update = vi.fn(async () => {
+      throw new Error('offline')
+    })
+    registerReg(reg)
     sel('check').click()
     await flush()
     expect(sel('banner').textContent).toBe('none')
-    expect(sel('note').textContent).toBe('检查失败，稍后再试')
+    expect(sel('note').textContent).toBe('检查更新失败，请稍后再试')
   })
 
   it('首次安装 SW 接管 → offlineReady 一次性提示；点「知道了」收起', async () => {

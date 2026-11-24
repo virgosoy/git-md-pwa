@@ -34,7 +34,7 @@ This repository is **public** (GitHub Pages hosting requires it). It must never 
 - `src/assets/{extract,store,pipeline,wire}.ts` — 资源懒加载：API 拉字节→dataURL 入 `assets` 表→装配给 img/a；>10MB 占位；「全下」。
 - `src/settings/{store,SettingsView}.tsx` — 设置（PAT / owner/repo / 同步开关默认开、公式 KaTeX / Mermaid 开关默认关；公开库令牌可不填）。
 - `src/storage/{format,estimate,StorageUsage}.ts(x)` — 本机存储占用（自算 IDB 四表 + Cache Storage，不用 `navigator.storage`）与清理入口（图片等资源、笔记镜像；均两步确认）。
-- `src/updates/{version,format,useUpdate,UpdateBanner}.ts` — PWA 更新编排：prompt 模式「发现新版本」横幅（Q8：同版本只提示一次，记住到 settings）＋在线每 10 分钟周期复查＋Settings「检查更新」（永远 verbose）。版本串 `v<semver>+<git短SHA>` 经 vite `define` 注入 `__APP_VERSION__`，同串构建期写 `dist/version.json`（不入预缓存、只走网络，更新检测读它）。
+- `src/updates/{version,format,manualNote,installed,useUpdate,UpdateBanner}.ts` — PWA 更新编排：prompt 模式「发现新版本」横幅（Q8：同版本只提示一次，记住到 settings）＋在线每 10 分钟周期复查＋Settings「检查更新」（永远 verbose）。版本串 `v<semver>+<git短SHA>` 经 vite `define` 注入 `__APP_VERSION__`，同串构建期写 `dist/version.json`（不入预缓存、只走网络，更新检测读它）。手动检查的结果分型（update 失败/超时/无 registration/无新 SW）由 `manualNote.ts` 纯函数映射成文案；「新版本已装好、只差重开」由 `installed.ts` 读本机 Workbox 预缓存首页、对比当前页面脚本判定。
 
 ### 测试缝约定
 
@@ -50,7 +50,7 @@ This repository is **public** (GitHub Pages hosting requires it). It must never 
 - 改 DB schema 只在 `src/idb.ts`；改部署路径同时改 `vite.config.ts` 的 `base` 与 manifest `start_url`（当前 `/git-md-pwa/`）。
 - 线上 = GitHub Pages 子路径；发布靠 push `main` → `.github/workflows/pages.yml`。
 - 手机 PWA「打开还是旧版」排查：先 `git fetch https://github.com/<owner>/<repo> main` 比对远端（本地=远端 → 部署无误，问题在设备侧）；部署正常仍旧 → 多为 **iOS 对已装主屏 PWA 守旧 SW（不会自己好）**，验收=重装（删图标 → Safari 清除站点数据 → 重开 → 重加）。本版 workbox **无 `updateViaCache` 选项，勿加**——浏览器默认对 SW 主脚本做网络重校验。
-- 手动「检查更新」的提示含义（`src/updates/useUpdate.ts`）：横幅延迟 1–2s 出现 = 有 waiting SW，点刷新接管；「已是最新版本」= 版本串相同且无新 SW；「线上版本与本机不同，暂无可安装的更新包」= 版本串不同但无 waiting SW——常见于新 SW 已装好、只差页面重载（**先杀掉 App 重开**），也可能是 `update()` 网络失败；「更新正在下载/还没准备好」= 稍后再试。
+- 手动「检查更新」的提示含义（`src/updates/useUpdate.ts` + `manualNote.ts`）：横幅延迟 1–2s 出现 = 有 waiting SW，点刷新接管；「已是最新版本」= 线上版本串与本机相同，或 SW 确认无新版本且预缓存就是当前构建；「更新正在下载」= 新 SW 安装中；「新版本 {v} 已装好，请把 App 彻底关掉（上滑关闭）再重新打开」= 预缓存里已是另一份构建（只差页面重开）；「线上已有 {v}，但本机还没拿到更新包」= SW 无新版本、预缓存就是当前构建（部署/CDN 未同步或仅元数据变化）；「检查更新失败/超时」= `update()` 失败或超时，稍后再试；「更新检查尚未就绪」= 拿不到 registration；「线上已有 …（本机 …）。如果刚更新过…」= 读不到预缓存信息时的兜底。
 
 ### 已知工具链坑：原生平台二进制包（根因 + 守卫）
 
