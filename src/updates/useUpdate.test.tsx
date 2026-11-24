@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render } from 'preact'
 import { useUpdate } from './useUpdate'
 import { CURRENT_APP_VERSION } from './version'
+import { loadLastCheckedAt, saveLastCheckedAt } from './store'
 import { loadSettings, saveSettings } from '../settings/store'
 import { wipeDb } from '../test/wipeDb'
 
@@ -43,6 +44,7 @@ function Host() {
       <span data-sel="banner">{u.banner ? (u.banner.live ?? 'generic') : 'none'}</span>
       <span data-sel="note">{u.latestNote ?? ''}</span>
       <span data-sel="offline">{u.offlineReady ? 'ready' : ''}</span>
+      <span data-sel="checked">{u.lastCheckedAt ?? ''}</span>
       <button data-sel="apply" onClick={() => void u.applyUpdate()}>
         apply
       </button>
@@ -159,6 +161,7 @@ describe('useUpdate', () => {
     document.body.innerHTML = ''
     document.head.innerHTML = ''
     delete (navigator as unknown as { serviceWorker?: unknown }).serviceWorker
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
     vi.useRealTimers()
   })
@@ -392,6 +395,28 @@ describe('useUpdate', () => {
     sw.onOfflineReady?.()
     await flush()
     expect(sel('offline').textContent).toBe('ready')
+  })
+
+  it('重开 App 后仍显示上次手动检查时间（从本机存储读回）', async () => {
+    await saveLastCheckedAt(1_700_000_000_000)
+    mountHost()
+    await flush()
+    expect(sel('checked').textContent).toBe('1700000000000')
+  })
+
+  it('手动检查后把检查时间写进本机存储（失败也记，因为确实检查过）', async () => {
+    const now = 1_700_000_000_000
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+    mountHost()
+    const reg = new FakeReg()
+    reg.update = vi.fn(async () => {
+      throw new Error('offline')
+    })
+    registerReg(reg)
+    sel('check').click()
+    await flush()
+    expect(sel('checked').textContent).toBe(String(now))
+    expect(await loadLastCheckedAt()).toBe(now)
   })
 
   it('周期复查：在线时每 10 分钟调一次 registration.update()', async () => {

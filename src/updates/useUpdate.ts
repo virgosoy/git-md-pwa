@@ -11,6 +11,7 @@ import { withTimeout } from '../lib/async'
 import { bannerNeeded, CURRENT_APP_VERSION, fetchLiveVersion } from './version'
 import { applyNotReadyNote, manualCheckNote, type UpdateReadiness } from './manualNote'
 import { detectInstalledBuild, type InstalledBuild } from './installed'
+import { loadLastCheckedAt, saveLastCheckedAt } from './store'
 
 /** 在线时周期复查 SW 更新的间隔（Q4：启动 + 周期） */
 const PERIODIC_CHECK_MS = 10 * 60_000
@@ -196,6 +197,21 @@ export function useUpdate(): UpdateState & UpdateActions {
     return () => window.clearInterval(id)
   }, [])
 
+  // 手动检查时间持久化：App 重开后设置页仍能看到上次检查，而不是「从未检查」。
+  // 读回前用户若已手动检查过，以内存里的新值为准（不覆盖）。
+  useEffect(() => {
+    let alive = true
+    void loadLastCheckedAt().then(
+      (at) => {
+        if (alive && at !== null) setLastCheckedAt((cur) => (cur === null ? at : cur))
+      },
+      () => {}
+    )
+    return () => {
+      alive = false
+    }
+  }, [])
+
   async function persistPrompted(live: string | null): Promise<void> {
     if (live) await saveSettings({ lastPromptedVersion: live })
   }
@@ -250,7 +266,13 @@ export function useUpdate(): UpdateState & UpdateActions {
         fetchLiveVersion(),
         reg ? ensureUpdateReady(reg) : Promise.resolve<UpdateReadiness>('unavailable')
       ])
-      setLastCheckedAt(Date.now())
+      const now = Date.now()
+      setLastCheckedAt(now)
+      try {
+        await saveLastCheckedAt(now)
+      } catch {
+        // 持久化失败不影响本次反馈；下次检查会再写
+      }
       if (readiness === 'ready') {
         // 线上确实有新 SW 可接管：verbose，不经过 lastPrompted 闸门
         showNote(null, 0)
