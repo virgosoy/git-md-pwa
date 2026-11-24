@@ -50,6 +50,7 @@ This repository is **public** (GitHub Pages hosting requires it). It must never 
 - 改 DB schema 只在 `src/idb.ts`；改部署路径同时改 `vite.config.ts` 的 `base` 与 manifest `start_url`（当前 `/git-md-pwa/`）。
 - 线上 = GitHub Pages 子路径；发布靠 push `main` → `.github/workflows/pages.yml`。
 - 手机 PWA「打开还是旧版」排查：先 `git fetch https://github.com/<owner>/<repo> main` 比对远端（本地=远端 → 部署无误，问题在设备侧）；部署正常仍旧 → 多为 **iOS 对已装主屏 PWA 守旧 SW（不会自己好）**，验收=重装（删图标 → Safari 清除站点数据 → 重开 → 重加）。本版 workbox **无 `updateViaCache` 选项，勿加**——浏览器默认对 SW 主脚本做网络重校验。
+- 手动「检查更新」的提示含义（`src/updates/useUpdate.ts`）：横幅延迟 1–2s 出现 = 有 waiting SW，点刷新接管；「已是最新版本」= 版本串相同且无新 SW；「线上版本与本机不同，暂无可安装的更新包」= 版本串不同但无 waiting SW——常见于新 SW 已装好、只差页面重载（**先杀掉 App 重开**），也可能是 `update()` 网络失败；「更新正在下载/还没准备好」= 稍后再试。
 
 ### 已知工具链坑：原生平台二进制包（根因 + 守卫）
 

@@ -35,14 +35,6 @@ function buttonByText(c: HTMLElement, text: string): HTMLButtonElement | undefin
     | undefined
 }
 
-/** 票 24：「全下」回填有 300ms 防抖，等待时要给真实定时器留出时间（waitFor 只轮询微任务）。 */
-async function waitUntil(predicate: () => boolean, ms = 2000): Promise<void> {
-  const deadline = Date.now() + ms
-  while (!predicate() && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 10))
-  }
-}
-
 function imgSrcs(c: HTMLElement): string[] {
   return [...(shadowOf(c)?.querySelectorAll('img') ?? [])].map(
     (img) => img.getAttribute('src') ?? ''
@@ -111,7 +103,7 @@ describe('23 · 资源自动下载开关（集成）', () => {
     expect(assetUrls).toEqual([])
 
     buttonByText(c, '全下')!.click()
-    await waitUntil(
+    await waitFor(
       () => (shadowOf(c)?.querySelector('img')?.getAttribute('src') ?? '').startsWith('data:image/png')
     )
     expect(assetUrls.length).toBe(1)
@@ -147,22 +139,22 @@ describe('23 · 资源自动下载开关（集成）', () => {
     document.body.appendChild(c)
     render(<App />, c)
 
-    await waitUntil(() => buttonByText(c, 'b.md') != null)
+    await waitFor(() => buttonByText(c, 'b.md') != null)
     buttonByText(c, 'b.md')!.click()
-    await waitUntil(() => shadowOf(c)?.querySelectorAll('img').length === 2)
+    await waitFor(() => shadowOf(c)?.querySelectorAll('img').length === 2)
     await new Promise((r) => setTimeout(r, 0))
     expect(imgSrcs(c)).toEqual([NOT_LOADED_IMG, NOT_LOADED_IMG])
 
     buttonByText(c, '全下')!.click()
     // 慢资源还挂着：快的应先回填，按钮保持「下载中…」
-    await waitUntil(() => imgSrcs(c)[0].startsWith('data:image/png'))
+    await waitFor(() => imgSrcs(c)[0].startsWith('data:image/png'))
     expect(imgSrcs(c)).toEqual(['data:image/png;base64,ZmE=', NOT_LOADED_IMG])
     expect(buttonByText(c, '下载中…')?.disabled).toBe(true)
 
     releaseSlow()
-    await waitUntil(() => imgSrcs(c).every((s) => s.startsWith('data:image/png')))
+    await waitFor(() => imgSrcs(c).every((s) => s.startsWith('data:image/png')))
     expect(imgSrcs(c)).toEqual(['data:image/png;base64,ZmE=', 'data:image/png;base64,c2w='])
-    await waitUntil(() => buttonByText(c, '全下') != null)
+    await waitFor(() => buttonByText(c, '全下') != null)
     expect(buttonByText(c, '全下')!.disabled).toBe(false)
   })
 })
