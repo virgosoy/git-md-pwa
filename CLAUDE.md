@@ -23,7 +23,7 @@ This repository is **public** (GitHub Pages hosting requires it). It must never 
 ### 架构（模块→责任）
 
 - `src/idb.ts` — **IndexedDB schema 唯一所有者**。DB `md-mirror`（v4）：`settings`/`mirror`(path)/`meta`(key)/`reading`(path)/`assets`(path)。加存储表 → 只改这一处 + `DB_VERSION` 递增。
-- `src/lib/bytes.ts` — 字符串字节估算（`stringBytes`）；存储统计与清空镜像共用同一口径，放中立模块避免 storage ↔ mirror 循环依赖。
+- `src/lib/` — 跨模块共享的纯工具，新增 helper 先放这里、别在模块内各写一份：`bytes.ts` 字符串字节估算（`stringBytes`；存储统计与清空镜像共用同一口径，中立模块避免 storage ↔ mirror 循环依赖）、`async.ts` 超时兜底（`withTimeout`；超时/拒绝都落回 fallback）。
 - `src/github/client.ts` — GitHub REST 客户端：trees 拉树、contents raw 取原文/字节。**绝不发送 `X-GitHub-Api-Version` 头**（浏览器 CORS 预检会失败）；空令牌走匿名只读。
 - `src/mirror/{tree,store,mirror}.ts` — 镜像策略（只 `.md`、>10MB 标 `too-large`、增量 diff）、持久化、**两阶段编排**（先全部网络拉取、全成功才写库 → 失败不破坏旧镜像，这是离线可用的根基）。
 - `src/reader/{render,mermaid,links,reading,ReaderView}.tsx` — markdown-it 渲染（`createMd(opts)` 工厂：可选注入 KaTeX 公式引擎 `math` + 开启 Mermaid 围栏宿主块 `mermaid`；表格+highlight，**原始 HTML 透传**，ADR-0002/0003）；每篇笔记进**独立 Shadow DOM**（样式不外漏、innerHTML 的 script 天然不执行）；内链分类/路径解析、阅读位置+最近、资源装配；`mermaid.ts` 按需 `import('mermaid')` 把放 `data-mermaid` 宿主块渲染成自包含 SVG 注入 shadow（语法错误降级保留源码+标）。

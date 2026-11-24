@@ -260,8 +260,8 @@ export function useUpdate(): UpdateState & UpdateActions {
     try {
       const reg = await resolveRegistration()
       // 版本号（version.json）只用来给横幅标注；能否更新一律以 SW 是否真正可接管为准。
-      // 只改文档的提交会让 version.json 变、sw.js 字节不变；update() 没发现新 worker 时
-      // 不能据此谎称「有更新」，但也不能说成「没有更新」——页面可能还跑旧构建。
+      // 版本串含 git SHA 且经 define 进 JS bundle，所以任何提交都会改变 sw.js 预缓存清单；
+      // update() 没发现新 worker 时，更可能是 CDN/SW 尚未同步，或新 SW 已装好但页面还没重载。
       const [live, readiness] = await Promise.all([
         fetchLiveVersion(),
         reg ? ensureUpdateReady(reg) : Promise.resolve<UpdateReadiness>('unavailable')
