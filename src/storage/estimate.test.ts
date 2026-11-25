@@ -4,10 +4,11 @@ import { saveMirrorMeta, upsertFile } from '../mirror/store'
 import { saveAsset } from '../assets/store'
 import { saveScroll } from '../reader/reading'
 import { saveSettings } from '../settings/store'
+import { saveDraft } from '../write/draft'
 import { wipeDb } from '../test/wipeDb'
 import { installFakeCaches } from '../test/fakeCaches'
 
-// 本机存储统计：逐类真实读取 IDB 四表 + Cache Storage。
+// 本机存储统计：逐类真实读取 IDB 五表 + Cache Storage。
 // 断言用人工推导的已知字面量（字节口径：Latin-1 1 B/字符、UTF-16 2 B/字符、数字 8 B、布尔 1 B）。
 
 describe('estimateStorage', () => {
@@ -40,6 +41,13 @@ describe('estimateStorage', () => {
     await saveMirrorMeta({ commitSha: 'abc123', syncedAt: 1000 })
     await saveSettings({ token: 'ghp_test_dummy', owner: 'me', repo: 'fixtures' })
     await saveScroll('a.md', 100)
+    await saveDraft({
+      path: 'a.md',
+      content: '草稿',
+      baseSha: 's1',
+      eol: 'lf',
+      updatedAt: 1
+    })
   }
 
   it('分类统计与字节口径（IDB + Cache Storage）', async () => {
@@ -60,8 +68,10 @@ describe('estimateStorage', () => {
     expect(u.assets).toEqual({ count: 1, skipped: 1, contentBytes: 26, overheadBytes: 83 })
     // 缓存：响应体 5；URL 25 + 头 31 + 状态 8
     expect(u.cache).toEqual({ count: 1, skipped: 0, contentBytes: 5, overheadBytes: 64 })
-    // 设置 29 + meta 14 + reading 20；键 'app'/'meta'/a.md 重复
-    expect(u.settings).toEqual({ count: 3, skipped: 0, contentBytes: 63, overheadBytes: 11 })
+    // 设置 31（7 个布尔）+ meta 14 + reading 20；键 'app'/'meta'/a.md 重复
+    expect(u.settings).toEqual({ count: 3, skipped: 0, contentBytes: 65, overheadBytes: 11 })
+    // 草稿：正文 4；path 两遍 8 + baseSha 2 + eol 2 + updatedAt 8
+    expect(u.drafts).toEqual({ count: 1, skipped: 0, contentBytes: 4, overheadBytes: 20 })
   })
 
   it('某一类读取失败：该类为 null，其它类照常', async () => {
@@ -78,5 +88,6 @@ describe('estimateStorage', () => {
     expect(u.notes).not.toBeNull()
     expect(u.assets).not.toBeNull()
     expect(u.settings).not.toBeNull()
+    expect(u.drafts).not.toBeNull()
   })
 })

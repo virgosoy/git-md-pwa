@@ -5,7 +5,7 @@ import { formatBytes } from './format'
 import { clearCachedAssets } from '../assets/store'
 import { clearMirror } from '../mirror/store'
 
-// 设置页「本机存储」：打开时统计一次（读 IDB 四表 + Cache Storage）。
+// 设置页「本机存储」：打开时统计一次（读 IDB 五表 + Cache Storage）。
 // 任一类失败 → 该行与总量显示「—」，附重试提示，不让错误整块消失或当 0。
 
 // 分类行只展示数据本体；记录字段/主键/缓存元数据统一进「记录与索引开销」，
@@ -158,7 +158,9 @@ export function StorageUsage({ syncing = false, onMirrorCleared }: StorageUsageP
     }
   }
 
-  const rows = usage ? [usage.notes, usage.assets, usage.cache, usage.settings] : []
+  const rows = usage
+    ? [usage.notes, usage.assets, usage.cache, usage.settings, usage.drafts]
+    : []
   const complete = rows.every((r): r is CategoryUsage => r !== null)
   const overhead = complete ? rows.reduce((sum, r) => sum + r.overheadBytes, 0) : null
   const total =
@@ -167,37 +169,47 @@ export function StorageUsage({ syncing = false, onMirrorCleared }: StorageUsageP
       : null
   const notes = usage?.notes ?? null
   const assets = usage?.assets ?? null
+  const drafts = usage?.drafts ?? null
   const canClearAssets = assets !== null && assets.count > 0
 
   function notesAction() {
     const notesUnavailable = notes === null
-    const clearable = notes !== null && notes.count + notes.skipped > 0
-    const disabled = syncing || !clearable
-    const disabledHint = notesUnavailable
-      ? '笔记数据读取失败，无法清空'
-      : syncing
-        ? '同步进行中，完成后再试'
-        : !clearable
-          ? '本机没有已镜像的笔记'
-          : undefined
+    // 草稿读不到时不允许清空：否则会在不知情的情况下把草稿一起删掉
+    const draftsUnavailable = drafts === null
+    const clearable =
+      notes !== null && notes.count + notes.skipped + (drafts?.count ?? 0) > 0
+    const disabled = syncing || !clearable || draftsUnavailable
+    const disabledHint =
+      notesUnavailable || draftsUnavailable
+        ? '笔记或草稿数据读取失败，无法清空'
+        : syncing
+          ? '同步进行中，完成后再试'
+          : !clearable
+            ? '本机没有已镜像的笔记'
+            : undefined
     const skippedClause =
       notes && notes.skipped > 0
         ? `（另有 ${notes.skipped} 篇超大未镜像，约 ${formatBytes(notes.contentBytes)}）`
         : ''
     const sizeClause = notes && notes.skipped === 0 ? `（约 ${formatBytes(notes.contentBytes)}）` : ''
+    const draftClause =
+      drafts && drafts.count > 0
+        ? `另有 ${drafts.count} 份未提交草稿（约 ${formatBytes(drafts.contentBytes)}）会一并删除。`
+        : ''
     return (
       <StorageAction
         label="清空笔记镜像"
         disabled={disabled}
         disabledHint={disabledHint}
-        confirmText={`将删除本机镜像的 ${notes?.count ?? 0} 篇笔记${skippedClause}${sizeClause}。同步记录、阅读位置与最近打开也会清除；设置和已缓存的图片不受影响。离线时将无法阅读；联网后点右上「刷新」可重新镜像。`}
+        confirmText={`将删除本机镜像的 ${notes?.count ?? 0} 篇笔记${skippedClause}${sizeClause}。${draftClause}同步记录、阅读位置与最近打开也会清除；设置和已缓存的图片不受影响。离线时将无法阅读；联网后点右上「刷新」可重新镜像。`}
         busyText="清空中…"
         confirmLabel="确认清空"
         errorText="清空失败，请重试。"
         onConfirm={async () => {
-          const { count, bytes } = await clearMirror()
+          const { count, bytes, drafts: removedDrafts } = await clearMirror()
           onMirrorCleared?.()
-          return `已清空本机笔记（${count} 篇，约 ${formatBytes(bytes)}）`
+          const draftDone = removedDrafts > 0 ? `，另有 ${removedDrafts} 份草稿` : ''
+          return `已清空本机笔记（${count} 篇，约 ${formatBytes(bytes)}${draftDone}）`
         }}
         onSuccess={refresh}
       />
@@ -240,6 +252,14 @@ export function StorageUsage({ syncing = false, onMirrorCleared }: StorageUsageP
             <span class="storage__count">{countText(usage.notes, '篇', '篇超大未镜像')}</span>
             <span class="storage__size">{sizeText(rowBytes(usage.notes))}</span>
           </div>
+
+          {usage.drafts && usage.drafts.count > 0 && (
+            <div class="storage__row">
+              <span class="storage__name">草稿</span>
+              <span class="storage__count">{usage.drafts.count} 份</span>
+              <span class="storage__size">{sizeText(rowBytes(usage.drafts))}</span>
+            </div>
+          )}
 
           {notesAction()}
 

@@ -1,4 +1,4 @@
-// 本机存储统计：逐类读取浏览器实际保存的数据（IndexedDB 四表 + Cache Storage）。
+// 本机存储统计：逐类读取浏览器实际保存的数据（IndexedDB 五表 + Cache Storage）。
 // 不调用 navigator.storage.estimate()：iOS 16 的 Safari 没有该接口（Safari 17+ 才有），
 // 自算口径在支持/不支持的设备上一致，且读到的就是应用自己写进去的数据。
 //
@@ -8,6 +8,7 @@
 
 import {
   STORE_ASSETS,
+  STORE_DRAFTS,
   STORE_META,
   STORE_MIRROR,
   STORE_READING,
@@ -21,6 +22,7 @@ import { MIRROR_META_KEY } from '../mirror/store'
 import type { ReadingRecord } from '../reader/reading'
 import type { AppSettings } from '../settings/store'
 import { SETTINGS_KEY } from '../settings/store'
+import type { DraftRecord } from '../write/draft'
 
 export interface CategoryUsage {
   /** 条目数（笔记/资源 = 已镜像或已缓存；缓存 = 条目数；设置与阅读 = 记录数） */
@@ -38,6 +40,7 @@ export interface StorageUsage {
   assets: CategoryUsage | null
   cache: CategoryUsage | null
   settings: CategoryUsage | null
+  drafts: CategoryUsage | null
   capturedAt: number
 }
 
@@ -110,6 +113,8 @@ async function settingsUsage(): Promise<CategoryUsage> {
       stringBytes(settings.lastPromptedVersion ?? '')
     const booleans = [
       settings.autoSync,
+      settings.writeBackEnabled,
+      settings.autoDownloadAssets,
       settings.renderMath,
       settings.renderMermaid,
       settings.betterHeadingExtract,
@@ -127,6 +132,25 @@ async function settingsUsage(): Promise<CategoryUsage> {
     out.count++
     out.contentBytes += stringBytes(r.path) + NUMBER_BYTES * 2 // scrollTop + openedAt
     out.overheadBytes += stringBytes(r.path) // 主键重复
+  }
+  return out
+}
+
+async function draftsUsage(): Promise<CategoryUsage> {
+  const all = await withStore<DraftRecord[]>(
+    STORE_DRAFTS,
+    (s) => s.getAll() as IDBRequest<DraftRecord[]>
+  )
+  const out = empty()
+  for (const d of all) {
+    out.count++
+    out.contentBytes += stringBytes(d.content)
+    // path 存两遍（记录字段 + 主键）；另计 baseSha/eol/updatedAt
+    out.overheadBytes +=
+      2 * stringBytes(d.path) +
+      stringBytes(d.baseSha) +
+      stringBytes(d.eol) +
+      NUMBER_BYTES
   }
   return out
 }
@@ -167,11 +191,12 @@ async function attempt(fn: () => Promise<CategoryUsage>): Promise<CategoryUsage 
 
 /** 统计本机存储占用；某一类读取失败时该类为 null（不影响其它类）。 */
 export async function estimateStorage(): Promise<StorageUsage> {
-  const [notes, assets, cache, settings] = await Promise.all([
+  const [notes, assets, cache, settings, drafts] = await Promise.all([
     attempt(notesUsage),
     attempt(assetsUsage),
     attempt(cacheUsage),
-    attempt(settingsUsage)
+    attempt(settingsUsage),
+    attempt(draftsUsage)
   ])
-  return { notes, assets, cache, settings, capturedAt: Date.now() }
+  return { notes, assets, cache, settings, drafts, capturedAt: Date.now() }
 }

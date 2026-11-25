@@ -2,8 +2,23 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import { SettingsView } from './settings/SettingsView'
 import type { AppSettings } from './settings/store'
 import { isConfigured, loadSettings, saveSettings } from './settings/store'
-import { getFile, loadFiles } from './mirror/store'
+import { getFile, loadFiles, upsertFile } from './mirror/store'
 import type { StoredFile } from './mirror/store'
+import { EditorView } from './editor/EditorView'
+import { ConflictPanel } from './write/ConflictPanel'
+import { classifyWriteError } from './write/errors'
+import { submitNote } from './write/submit'
+import { applyEol, detectEol, stripBom, toLf } from './lib/eol'
+import type { Eol } from './lib/eol'
+import {
+  DRAFT_SAVE_DELAY_MS,
+  MAX_EDIT_BYTES,
+  deleteDraft,
+  listDraftPaths,
+  loadDraft,
+  saveDraft
+} from './write/draft'
+import type { DraftRecord } from './write/draft'
 import { NotesList } from './notes/NotesList'
 import { buildIndex, searchNotes } from './search'
 import type { HeadingAnchor } from './search'
@@ -31,6 +46,32 @@ interface OpenNote {
   scrollTop: number
   /** 21 · 打开后跳到的标题锚点（主页搜索结果点标题行） */
   anchor?: HeadingAnchor
+  /** 镜像 blob sha（回写提交的前置条件） */
+  sha: string
+}
+
+/** 回写编辑器状态（正文为 textarea 的 LF 形式） */
+interface EditorState {
+  path: string
+  content: string
+  /** 可确知的基准正文（LF）；草稿基于更早版本时为 null（必定视为有改动） */
+  baseContent: string | null
+  baseSha: string
+  eol: Eol
+}
+
+/** 保存冲突：远端已变化或已删除 */
+interface ConflictState {
+  kind: 'changed' | 'deleted'
+  remoteSha?: string
+  remoteContent?: string
+  busy: boolean
+  error: string | null
+}
+
+interface WriteTarget {
+  client: ReturnType<typeof createGithubClient>
+  repo: { owner: string; repo: string }
 }
 
 /** 滚动位置写入的 trailing debounce，避免每个滚动 tick 都写 IDB */
@@ -52,6 +93,16 @@ export function App() {
   const [current, setCurrent] = useState<OpenNote | null>(null)
   const [findOpen, setFindOpen] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [draftPaths, setDraftPaths] = useState<ReadonlySet<string>>(new Set())
+  const [currentDraft, setCurrentDraft] = useState<DraftRecord | null>(null)
+  const [editor, setEditor] = useState<EditorState | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [conflict, setConflict] = useState<ConflictState | null>(null)
+  const draftTimer = useRef<number | null>(null)
+  const readerScrollRef = useRef(0)
+  // 同步守卫：状态更新是异步的，双击可能在重渲染前再次进入提交
+  const savingRef = useRef(false)
+  const conflictBusyRef = useRef(false)
   const scrollTimer = useRef<number | undefined>(undefined)
   const mainRef = useRef<HTMLElement>(null)
   // 主页搜索的滚动位置管理（列表与结果共用 .app__main 这一个滚动容器）：
@@ -197,6 +248,7 @@ export function App() {
       .then((s) => {
         setSettings(s)
         settingsRef.current = s
+        void refreshDraftPaths()
         if (isConfigured(s)) {
           void refreshRecent()
           void loadMirrorMeta()
@@ -276,6 +328,8 @@ export function App() {
     const s = await loadSettings()
     setSettings(s)
     settingsRef.current = s
+    void refreshDraftPaths()
+    void refreshCurrentDraft(currentPathRef.current)
     if (isConfigured(s)) {
       void refreshFiles()
       // 首次配置保存后立即同步，让首页立刻有内容
@@ -301,10 +355,338 @@ export function App() {
     } catch {
       // 最近列表刷新失败不影响清空结果
     }
+    await refreshDraftPaths()
+    setCurrentDraft(null)
   }
 
   async function refreshRecent(): Promise<void> {
     setRecent(await listRecent(20))
+  }
+
+  // ── 26 · 回写：草稿、编辑器、提交与冲突 ───────────────────────────────
+
+  async function refreshDraftPaths(): Promise<void> {
+    try {
+      setDraftPaths(new Set(await listDraftPaths()))
+    } catch {
+      // 草稿表读取失败不影响阅读
+    }
+  }
+
+  async function refreshCurrentDraft(path: string | null): Promise<void> {
+    if (!path) {
+      setCurrentDraft(null)
+      return
+    }
+    try {
+      setCurrentDraft((await loadDraft(path)) ?? null)
+    } catch {
+      setCurrentDraft(null)
+    }
+  }
+
+  function clearDraftTimer(): void {
+    if (draftTimer.current != null) {
+      window.clearTimeout(draftTimer.current)
+      draftTimer.current = null
+    }
+  }
+
+  function editorDirty(ed: EditorState): boolean {
+    return ed.baseContent === null || toLf(ed.content) !== ed.baseContent
+  }
+
+  async function persistDraft(ed: EditorState): Promise<void> {
+    if (ed.baseContent !== null && toLf(ed.content) === ed.baseContent) {
+      await deleteDraft(ed.path)
+    } else {
+      await saveDraft({
+        path: ed.path,
+        content: toLf(ed.content),
+        baseSha: ed.baseSha,
+        eol: ed.eol,
+        updatedAt: Date.now()
+      })
+    }
+  }
+
+  function currentWriteTarget(): WriteTarget | null {
+    if (!settings || !settings.token || !settings.owner || !settings.repo) return null
+    return {
+      client: createGithubClient(settings.token),
+      repo: { owner: settings.owner, repo: settings.repo }
+    }
+  }
+
+  function handleEditorInput(text: string): void {
+    const ed = editor
+    if (!ed) return
+    const next = { ...ed, content: text }
+    setEditor(next)
+    clearDraftTimer()
+    draftTimer.current = window.setTimeout(() => {
+      draftTimer.current = null
+      void persistDraft(next)
+        .then(() => refreshDraftPaths())
+        .catch(() => setNotice('草稿保存失败，请勿离开页面'))
+    }, DRAFT_SAVE_DELAY_MS)
+  }
+
+  async function openEditor(): Promise<void> {
+    const cur = current
+    if (!cur || !settings) return
+    if (!settings.writeBackEnabled || !settings.token) return
+    const file = await getFile(cur.path)
+    if (!file || file.status !== 'ok') {
+      setNotice('这篇笔记尚未镜像，暂时无法编辑')
+      return
+    }
+    if (file.size > MAX_EDIT_BYTES) {
+      setNotice('文件过大，暂不支持手机编辑')
+      return
+    }
+    const raw = stripBom(file.content)
+    const base = toLf(raw)
+    const draft = await loadDraft(file.path)
+    clearDraftTimer()
+    setSaving(false)
+    setConflict(null)
+    setFindOpen(false)
+    setEditor(
+      draft
+        ? {
+            path: file.path,
+            content: toLf(draft.content),
+            // 草稿基于当前镜像版本时，才确知基准正文；否则视为必定有改动
+            baseContent: draft.baseSha === file.sha ? base : null,
+            baseSha: draft.baseSha,
+            eol: draft.eol
+          }
+        : {
+            path: file.path,
+            content: base,
+            baseContent: base,
+            baseSha: file.sha,
+            eol: detectEol(raw)
+          }
+    )
+    // 阅读器即将卸载：把当前滚动位置带进 current，返回时按它还原
+    setCurrent((c) =>
+      c && c.path === file.path ? { ...c, scrollTop: readerScrollRef.current } : c
+    )
+  }
+
+  async function closeEditor(): Promise<void> {
+    const ed = editor
+    if (!ed || savingRef.current) return
+    clearDraftTimer()
+    try {
+      await persistDraft(ed)
+    } catch {
+      setNotice('草稿保存失败，请重试')
+      return
+    }
+    setEditor(null)
+    setConflict(null)
+    await refreshDraftPaths()
+    await refreshCurrentDraft(ed.path)
+  }
+
+  async function discardEditor(): Promise<void> {
+    const ed = editor
+    if (!ed || savingRef.current) return
+    clearDraftTimer()
+    try {
+      await deleteDraft(ed.path)
+    } catch {
+      setNotice('丢弃草稿失败，请重试')
+      return
+    }
+    setEditor(null)
+    setConflict(null)
+    await refreshDraftPaths()
+    await refreshCurrentDraft(ed.path)
+    setNotice('草稿已丢弃')
+  }
+
+  async function afterSaved(
+    ed: EditorState,
+    newSha: string,
+    contentWithEol: string
+  ): Promise<void> {
+    const size = new TextEncoder().encode(contentWithEol).byteLength
+    // 提交已经成功：先清草稿，避免本地写库失败导致重复提交
+    await deleteDraft(ed.path).catch(() => {})
+    try {
+      await upsertFile({
+        path: ed.path,
+        sha: newSha,
+        content: contentWithEol,
+        size,
+        status: 'ok'
+      })
+    } catch {
+      // 镜像回填失败不阻断提交结果；下次同步按 sha 校准
+    }
+    setEditor({ ...ed, baseContent: toLf(ed.content), baseSha: newSha })
+    setCurrent((c) =>
+      c && c.path === ed.path ? { ...c, content: contentWithEol, sha: newSha } : c
+    )
+    setConflict(null)
+    await refreshFiles()
+    await refreshDraftPaths()
+    setCurrentDraft(null)
+    setNotice('已提交')
+  }
+
+  async function loadConflict(
+    ed: EditorState,
+    target: WriteTarget,
+    fallbackMessage: string
+  ): Promise<void> {
+    try {
+      const remote = await target.client.getFileContent(target.repo, ed.path)
+      if (remote.sha === ed.baseSha) {
+        // PUT 报 409/422 但远端 sha 没变：多半是校验错误而非冲突
+        setNotice(fallbackMessage)
+        return
+      }
+      setConflict({
+        kind: 'changed',
+        remoteSha: remote.sha,
+        remoteContent: remote.content,
+        busy: false,
+        error: null
+      })
+    } catch (err) {
+      if (classifyWriteError(err).kind === 'not-found') {
+        setConflict({ kind: 'deleted', busy: false, error: null })
+      } else {
+        setNotice('远端版本读取失败，草稿已保留；请稍后再试')
+      }
+    }
+  }
+
+  async function saveEditor(): Promise<void> {
+    const ed = editor
+    if (!ed || savingRef.current || !editorDirty(ed)) return
+    const target = currentWriteTarget()
+    if (!target) {
+      setNotice('请先在设置里填写令牌与仓库')
+      return
+    }
+    savingRef.current = true
+    setSaving(true)
+    clearDraftTimer()
+    try {
+      await persistDraft(ed)
+      const content = applyEol(ed.content, ed.eol)
+      const result = await submitNote(target.client, target.repo, {
+        path: ed.path,
+        content,
+        sha: ed.baseSha
+      })
+      await afterSaved(ed, result.sha, content)
+    } catch (err) {
+      const failure = classifyWriteError(err)
+      if (failure.kind === 'conflict') {
+        await loadConflict(ed, target, err instanceof Error ? err.message : failure.message)
+      } else if (failure.kind === 'network') {
+        setNotice('已存草稿，联网后再保存')
+        void refreshDraftPaths()
+      } else {
+        setNotice(failure.message)
+        void refreshDraftPaths()
+      }
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
+  }
+
+  async function overwriteConflict(): Promise<void> {
+    const ed = editor
+    const c = conflict
+    if (!ed || !c || c.busy || conflictBusyRef.current) return
+    const target = currentWriteTarget()
+    if (!target) return
+    conflictBusyRef.current = true
+    setConflict({ ...c, busy: true, error: null })
+    try {
+      const content = applyEol(ed.content, ed.eol)
+      const result = await submitNote(target.client, target.repo, {
+        path: ed.path,
+        content,
+        sha: c.kind === 'changed' ? c.remoteSha : undefined
+      })
+      await afterSaved(ed, result.sha, content)
+    } catch (err) {
+      const failure = classifyWriteError(err)
+      if (failure.kind === 'conflict') {
+        await loadConflict(ed, target, err instanceof Error ? err.message : failure.message)
+      } else {
+        setConflict({ ...c, busy: false, error: failure.message })
+      }
+    } finally {
+      conflictBusyRef.current = false
+    }
+  }
+
+  async function discardConflict(): Promise<void> {
+    const ed = editor
+    const c = conflict
+    if (!ed || !c || conflictBusyRef.current) return
+    conflictBusyRef.current = true
+    try {
+      if (c.kind === 'changed' && c.remoteSha && c.remoteContent != null) {
+        const remoteSha = c.remoteSha
+        const remoteContent = c.remoteContent
+        const size = new TextEncoder().encode(remoteContent).byteLength
+        try {
+          await deleteDraft(ed.path)
+        } catch {
+          setConflict({ ...c, busy: false, error: '加载远端版本失败，请重试' })
+          return
+        }
+        try {
+          await upsertFile({
+            path: ed.path,
+            sha: remoteSha,
+            content: remoteContent,
+            size,
+            status: 'ok'
+          })
+        } catch {
+          // 镜像回填失败不阻断；下次同步校准
+        }
+        setCurrent((cur) =>
+          cur && cur.path === ed.path
+            ? { ...cur, content: remoteContent, sha: remoteSha }
+            : cur
+        )
+        setEditor(null)
+        setConflict(null)
+        setCurrentDraft(null)
+        await refreshFiles()
+        await refreshDraftPaths()
+        setNotice('已加载远端版本')
+        return
+      }
+
+      try {
+        await deleteDraft(ed.path)
+      } catch {
+        setConflict({ ...c, busy: false, error: '丢弃草稿失败，请重试' })
+        return
+      }
+      setEditor(null)
+      setConflict(null)
+      setCurrentDraft(null)
+      await refreshDraftPaths()
+      setNotice('已放弃草稿；该文件在远端已不存在，下次同步会移除')
+    } finally {
+      conflictBusyRef.current = false
+    }
   }
 
   async function openNote(path: string, anchor?: HeadingAnchor): Promise<void> {
@@ -318,13 +700,22 @@ export function App() {
     setNotice(null)
     setFindOpen(false) // 切入新笔记默认关闭查找（find 状态不跨篇）
     const reading = await loadReading(path)
-    setCurrent({ path, content: file.content, scrollTop: reading?.scrollTop ?? 0, anchor })
+    readerScrollRef.current = reading?.scrollTop ?? 0
+    setCurrent({
+      path,
+      content: file.content,
+      scrollTop: reading?.scrollTop ?? 0,
+      anchor,
+      sha: file.sha
+    })
     await recordOpen(path)
     await refreshRecent()
+    await refreshCurrentDraft(path)
   }
 
   function handleScroll(scrollTop: number): void {
     if (!current) return
+    readerScrollRef.current = scrollTop
     if (scrollTimer.current !== undefined) clearTimeout(scrollTimer.current)
     scrollTimer.current = (setTimeout(() => {
       void saveScroll(current.path, scrollTop)
@@ -334,17 +725,43 @@ export function App() {
   const configured = settings != null && isConfigured(settings)
   const downloadingThisNote =
     downloadingAssets != null && current != null && downloadingAssets.path === current.path
+  // 回写开关 + 令牌齐全才露出编辑能力；>1MB 的笔记点 ✏️ 时提示只读
+  const writeUi = !!settings?.writeBackEnabled && (settings?.token.length ?? 0) > 0
+  const canEditCurrent = writeUi && current != null
+  const showDraftBanner = writeUi && current != null && currentDraft?.path === current.path
+  const editorIsDirty = editor != null && editorDirty(editor)
 
   return (
     <div class="app">
       <header class="app__header">
-        {current ? (
+        {editor ? (
+          <>
+            <button class="btn" onClick={() => void closeEditor()} disabled={saving}>
+              ‹ 返回
+            </button>
+            <h1 class="app__title app__title--trunc">{editor.path}</h1>
+            <div class="app__actions">
+              <button
+                class="btn"
+                onClick={() => void saveEditor()}
+                disabled={saving || !editorIsDirty}
+              >
+                {saving ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </>
+        ) : current ? (
           <>
             <button class="btn" onClick={() => setCurrent(null)}>
               ‹ 返回
             </button>
             <h1 class="app__title app__title--trunc">{current.path}</h1>
             <div class="app__actions">
+              {canEditCurrent && (
+                <button class="btn" aria-label="编辑笔记" onClick={() => void openEditor()}>
+                  ✏️
+                </button>
+              )}
               <button
                 class="btn"
                 onClick={() => void downloadNoteAssets()}
@@ -396,28 +813,54 @@ export function App() {
 
       <SyncBanner status={syncStatus} fail={syncFail} lastSyncedAt={lastSyncedAt} />
 
-      <main ref={mainRef} class={current ? 'app__main app__main--flush' : 'app__main'}>
-        {current ? (
-          <ReaderView
-            key={current.path}
-            path={current.path}
-            content={current.content}
-            initialScrollTop={current.scrollTop}
-            initialAnchor={current.anchor}
-            onAnchorMiss={() => setNotice('未找到该标题，已从上次阅读位置打开')}
+      <main
+        ref={mainRef}
+        class={current || editor ? 'app__main app__main--flush' : 'app__main'}
+      >
+        {editor ? (
+          <EditorView
+            path={editor.path}
+            value={editor.content}
+            saving={saving}
+            onInput={handleEditorInput}
+            onDiscard={() => void discardEditor()}
             assetLoader={assetLoader}
-            refreshToken={readerTick}
             autoDownloadAssets={settings?.autoDownloadAssets ?? true}
             renderMath={settings?.renderMath ?? false}
             renderMermaid={settings?.renderMermaid ?? false}
             theme={resolvedTheme}
-            tocPinned={settings?.tocPinned ?? false}
-            onTocPinChange={(next) => void handleTocPinChange(next)}
-            findOpen={findOpen}
-            onFindClose={() => setFindOpen(false)}
-            onOpenNote={(p) => void openNote(p)}
-            onScroll={handleScroll}
           />
+        ) : current ? (
+          <>
+            {showDraftBanner && (
+              <div class="draft-banner" role="status">
+                <span class="draft-banner__text">本机有未提交草稿</span>
+                <button class="btn" onClick={() => void openEditor()}>
+                  继续编辑
+                </button>
+              </div>
+            )}
+            <ReaderView
+              key={current.path}
+              path={current.path}
+              content={current.content}
+              initialScrollTop={current.scrollTop}
+              initialAnchor={current.anchor}
+              onAnchorMiss={() => setNotice('未找到该标题，已从上次阅读位置打开')}
+              assetLoader={assetLoader}
+              refreshToken={readerTick}
+              autoDownloadAssets={settings?.autoDownloadAssets ?? true}
+              renderMath={settings?.renderMath ?? false}
+              renderMermaid={settings?.renderMermaid ?? false}
+              theme={resolvedTheme}
+              tocPinned={settings?.tocPinned ?? false}
+              onTocPinChange={(next) => void handleTocPinChange(next)}
+              findOpen={findOpen}
+              onFindClose={() => setFindOpen(false)}
+              onOpenNote={(p) => void openNote(p)}
+              onScroll={handleScroll}
+            />
+          </>
         ) : settings == null ? (
           <p class="app__hint">载入中…</p>
         ) : showSettings || !configured ? (
@@ -431,6 +874,7 @@ export function App() {
             onCheckUpdates={() => void updates.checkForUpdates()}
             syncing={syncStatus === 'syncing'}
             onMirrorCleared={() => void handleMirrorCleared()}
+            draftCount={draftPaths.size}
           />
         ) : recent.length === 0 && files.length === 0 ? (
           <div class="welcome">
@@ -464,6 +908,9 @@ export function App() {
                         <li key={r.path}>
                           <button class="recent__item" onClick={() => void openNote(r.path)}>
                             {r.path}
+                            {writeUi && draftPaths.has(r.path) && (
+                              <span class="draft-mark">草稿</span>
+                            )}
                           </button>
                         </li>
                       ))}
@@ -473,7 +920,11 @@ export function App() {
                 {files.length > 0 && (
                   <>
                     <h2 class="recent__title">全部笔记（{files.length}）</h2>
-                    <NotesList files={files} onOpen={(p) => void openNote(p)} />
+                    <NotesList
+                      files={files}
+                      onOpen={(p) => void openNote(p)}
+                      draftPaths={writeUi ? draftPaths : undefined}
+                    />
                   </>
                 )}
               </>
@@ -481,6 +932,18 @@ export function App() {
           </div>
         )}
       </main>
+
+      {conflict && (
+        <ConflictPanel
+          kind={conflict.kind}
+          remoteContent={conflict.remoteContent}
+          busy={conflict.busy}
+          error={conflict.error}
+          onOverwrite={() => void overwriteConflict()}
+          onDiscard={() => void discardConflict()}
+          onCancel={() => setConflict(null)}
+        />
+      )}
 
       {notice && (
         <div class="notice" role="status">

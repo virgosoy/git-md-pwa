@@ -21,6 +21,8 @@ export interface SettingsViewProps {
   syncing?: boolean
   /** 笔记镜像被清空后通知 App 刷新列表 / 最近 / 同步横幅 */
   onMirrorCleared?: () => void
+  /** 本机未提交草稿数（关闭回写时提示草稿不会被删除） */
+  draftCount?: number
 }
 
 export function SettingsView({
@@ -32,7 +34,8 @@ export function SettingsView({
   latestNote = null,
   onCheckUpdates,
   syncing = false,
-  onMirrorCleared
+  onMirrorCleared,
+  draftCount = 0
 }: SettingsViewProps) {
   const [form, setForm] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [loaded, setLoaded] = useState(false)
@@ -70,7 +73,7 @@ export function SettingsView({
       <h2 class="settings__title">设置</h2>
 
       <label class="field">
-        <span class="field__label">细粒度只读令牌（PAT）</span>
+        <span class="field__label">细粒度令牌（PAT）</span>
         <input
           class="field__input"
           type="password"
@@ -81,7 +84,9 @@ export function SettingsView({
           disabled={!loaded}
           onInput={bindText('token')}
         />
-        <span class="field__hint">只存在本机；私有仓库必须填，公开仓库可不填。</span>
+        <span class="field__hint">
+          只存在本机；私有仓库必须填。阅读只需 Contents: Read，回写需要 Read and write；公开仓库可不填。
+        </span>
       </label>
 
       <label class="field">
@@ -146,6 +151,23 @@ export function SettingsView({
           打开笔记时自动下载图片与附件资源（默认勾选；关闭后只显示已缓存资源，点单个或「全下」再下载）
         </span>
       </label>
+
+      <label class="field field--row">
+        <input
+          type="checkbox"
+          checked={form.writeBackEnabled}
+          disabled={!loaded}
+          onChange={bindCheck('writeBackEnabled')}
+        />
+        <span>
+          回写：允许在手机上编辑笔记并提交回仓库（默认关闭；需要 Contents: Read and write 的令牌）
+        </span>
+      </label>
+      {!form.writeBackEnabled && draftCount > 0 && (
+        <p class="field__hint">
+          本机有 {draftCount} 份未提交草稿；关闭回写不会删除它们，再次开启可继续。
+        </p>
+      )}
 
       <label class="field field--row">
         <input

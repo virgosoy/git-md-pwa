@@ -11,7 +11,8 @@
 - **全局搜索**：H1–H6 标题 + 文件名/路径，命中标注「文件」/「标题 H{n}」
 - **资源懒加载**：笔记引用的图片/PDF 在线自动缓存，离线有占用占位，可「全下」预载整篇
 - **同步**：打开自动（可关）、手动刷新、顶部「离线 · 上次同步 x 分钟前」横幅
-- **私有/公开通吃**：私有库填一个**只读**细粒度令牌；公开库令牌可留空
+- **回写（可选，默认关）**：在手机上编辑现有 `.md`（≤1MB），本地自动存草稿，保存即提交到仓库默认分支；远端变更时先预览再选覆盖/放弃
+- **私有/公开通吃**：私有库填细粒度令牌（阅读只读即可；开启回写需 Contents 读写）；公开库令牌可留空
 
 ## 隐私
 
@@ -26,7 +27,7 @@ npm run dev          # 本地开发 http://localhost:5173
 npm run typecheck
 npm test             # vitest 全量（纯函数/组件/集成三层）
 npm run verify:pwa   # 构建 + 校验 PWA 产物
-bash scripts/wizard-token.sh   # 交互向导：建细粒度只读令牌 + 写入 gitignore 的 .env
+bash scripts/wizard-token.sh   # 交互向导：建细粒度令牌（只读/读写可选）+ 写入 gitignore 的 .env
 ```
 
 架构与测试缝约定见 [`CLAUDE.md`](./CLAUDE.md)；领域词汇见 [`GLOSSARY.md`](./GLOSSARY.md)。

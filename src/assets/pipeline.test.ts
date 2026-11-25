@@ -23,6 +23,12 @@ function clientReturning(bytes: Uint8Array): GithubClient & { calls: number } {
     async getRawBytes() {
       state.calls++
       return bytes
+    },
+    async getFileContent() {
+      return { sha: '', content: '' }
+    },
+    async putFile() {
+      throw new Error('not used')
     }
   }
 }

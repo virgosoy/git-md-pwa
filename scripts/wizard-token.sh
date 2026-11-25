@@ -202,15 +202,29 @@ run_wizard() {
 
 TOTAL_STAGES=4
 
-banner "GitHub 细粒度只读令牌（用于 git-md-pwa 联调）"
+banner "GitHub 细粒度令牌（用于 git-md-pwa 联调）"
 
 # ── 1/4 创建令牌 ───────────────────────────────────────────────────────────
-stage "GitHub：创建细粒度只读令牌"
-say "在打开的页面创建「只访问你的笔记库、只读」的令牌。"
+stage "GitHub：创建细粒度令牌"
+say "先选用途：只读只用于阅读；读写才能从手机回写（编辑并提交）。"
+say "  1) 只读（默认）"
+say "  2) 读写（Contents: Read and write）"
+if confirm "需要回写（读写权限）吗？"; then
+  WRITE_MODE=1
+else
+  WRITE_MODE=0
+fi
+if [[ $WRITE_MODE -eq 1 ]]; then
+  warn "写权限令牌能让 App 修改/删除该仓库内容；只给这台设备和你自己的笔记库。"
+fi
 open_url "https://github.com/settings/personal-access-tokens/new"
 step "Token name：随意（如 md-mirror）。Expiration：建议 90 天。"
 step "Repository access：选 Only select repositories → 勾选你的笔记库。"
-step "Permissions → Repository permissions → Contents：改为 Read-only（Metadata 会自动只读）。"
+if [[ $WRITE_MODE -eq 1 ]]; then
+  step "Permissions → Repository permissions → Contents：改为 Read and write（Metadata 会自动只读）。"
+else
+  step "Permissions → Repository permissions → Contents：改为 Read-only（Metadata 会自动只读）。"
+fi
 step "其余权限保持 None，然后 Generate token。"
 step "页面上会显示一次 github_pat_...，点复制（离开页面后就看不到了）。"
 pause "复制好令牌后，按 Enter 进入下一步"
@@ -226,6 +240,9 @@ ask REPO_NAME "仓库 repo："
 # ── 3/4 校验 ───────────────────────────────────────────────────────────────
 stage "校验：令牌能读到你的私有仓库"
 say "用该令牌真正请求一次文件树接口，确认权限配置正确。"
+if [[ $WRITE_MODE -eq 1 ]]; then
+  note "读写令牌不做试写验证（避免往仓库写临时文件）；手机保存若提示 403，回第 1 步检查 Contents 是否为 Read and write。"
+fi
 status=000
 attempt=0
 while [[ "$status" != "200" ]]; do

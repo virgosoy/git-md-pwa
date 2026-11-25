@@ -15,10 +15,11 @@ describe('settingsStore', () => {
     await clearSettings()
   })
 
-  it('默认 autoSync 为开、renderMath/renderMermaid/tocPinned 为关，主题为深色，其余字段为空', async () => {
+  it('默认 autoSync 为开、writeBackEnabled/renderMath/renderMermaid/tocPinned 为关，主题为深色，其余字段为空', async () => {
     const s = await loadSettings()
     expect(s).toEqual(DEFAULT_SETTINGS)
     expect(s.autoSync).toBe(true)
+    expect(s.writeBackEnabled).toBe(false)
     expect(s.autoDownloadAssets).toBe(true)
     expect(s.renderMath).toBe(false)
     expect(s.renderMermaid).toBe(false)
@@ -35,12 +36,13 @@ describe('settingsStore', () => {
     expect((await loadSettings()).theme).toBe('system')
   })
 
-  it('保存后重新加载，往返保留 token/owner/repo/autoSync/renderMath/renderMermaid/betterHeadingExtract/tocPinned', async () => {
+  it('保存后重新加载，往返保留 token/owner/repo/autoSync/writeBackEnabled/renderMath/renderMermaid/betterHeadingExtract/tocPinned', async () => {
     await saveSettings({
       token: 'ghp_test_dummy',
       owner: 'me',
       repo: 'fixtures',
       autoSync: false,
+      writeBackEnabled: true,
       autoDownloadAssets: false,
       renderMath: true,
       renderMermaid: true,
@@ -55,6 +57,7 @@ describe('settingsStore', () => {
       owner: 'me',
       repo: 'fixtures',
       autoSync: false,
+      writeBackEnabled: true,
       autoDownloadAssets: false,
       renderMath: true,
       renderMermaid: true,
@@ -81,6 +84,7 @@ describe('settingsStore', () => {
       owner: 'a',
       repo: 'c',
       autoSync: false,
+      writeBackEnabled: false,
       autoDownloadAssets: true,
       renderMath: false,
       renderMermaid: false,
@@ -115,6 +119,13 @@ describe('settingsStore', () => {
     expect((await loadSettings()).tocPinned).toBe(true)
     await saveSettings({ tocPinned: false })
     expect((await loadSettings()).tocPinned).toBe(false)
+  })
+
+  it('writeBackEnabled 单独持久化：false→true 往返不丢', async () => {
+    await saveSettings({ writeBackEnabled: true })
+    expect((await loadSettings()).writeBackEnabled).toBe(true)
+    await saveSettings({ writeBackEnabled: false })
+    expect((await loadSettings()).writeBackEnabled).toBe(false)
   })
 
   it('isConfigured：owner+repo 非空即视为已配置（公开库可不填令牌）', () => {

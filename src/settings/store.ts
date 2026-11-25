@@ -1,6 +1,6 @@
 // S1 · 设置存储
 // 公共接口：loadSettings / saveSettings / clearSettings
-// 设置（含细粒度只读令牌、owner/repo、同步开关）只持久化在本应用自己的 IndexedDB。
+// 设置（含细粒度令牌、owner/repo、同步开关、回写开关）只持久化在本应用自己的 IndexedDB。
 // 隐私红线：令牌与仓库信息只应存在于设备本地，绝无任何硬编码的真实值。
 // 数据库连接与事务由共享模块 src/idb.ts 集中拥有。
 
@@ -8,7 +8,7 @@ import { STORE_SETTINGS, withStore } from '../idb'
 import type { ThemeMode } from '../theme/theme'
 
 export interface AppSettings {
-  /** 细粒度只读 PAT（设备本地） */
+  /** 细粒度 PAT（设备本地；阅读只读即可，回写需 Contents 读写） */
   token: string
   /** GitHub owner */
   owner: string
@@ -16,6 +16,8 @@ export interface AppSettings {
   repo: string
   /** 同步开关，默认开 */
   autoSync: boolean
+  /** 回写开关，默认关；开启后允许编辑现有笔记并提交回仓库 */
+  writeBackEnabled: boolean
   /**
    * 打开笔记时自动下载图片/附件资源（默认开）；关=只显示已缓存，
    * 未缓存的不联网（点单个或「全下」才下载）
@@ -40,6 +42,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   owner: '',
   repo: '',
   autoSync: true,
+  writeBackEnabled: false,
   autoDownloadAssets: true,
   theme: 'dark',
   renderMath: false,

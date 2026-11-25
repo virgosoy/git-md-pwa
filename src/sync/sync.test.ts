@@ -19,6 +19,12 @@ function clientWithTree(tree: unknown): GithubClient {
     },
     async getRawBytes() {
       return new Uint8Array(0)
+    },
+    async getFileContent() {
+      return { sha: '', content: '' }
+    },
+    async putFile() {
+      throw new Error('not used')
     }
   }
 }
@@ -43,6 +49,12 @@ describe('runSync 编排与错误分类', () => {
       },
       async getRawBytes() {
         return new Uint8Array(0)
+      },
+      async getFileContent() {
+        return { sha: '', content: '' }
+      },
+      async putFile() {
+        throw new Error('not used')
       }
     }
     const out = await runSync(c, REPO)
@@ -59,6 +71,12 @@ describe('runSync 编排与错误分类', () => {
       },
       async getRawBytes() {
         return new Uint8Array(0)
+      },
+      async getFileContent() {
+        return { sha: '', content: '' }
+      },
+      async putFile() {
+        throw new Error('not used')
       }
     }
     const out = await runSync(c, REPO)

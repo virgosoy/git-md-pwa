@@ -1,6 +1,7 @@
 // 共享 IndexedDB：唯一拥有 md-mirror 数据库 schema 的模块。
-// settings（设置）、mirror（镜像）、meta（元数据）、reading（阅读位置/最近打开）
-// 四张对象仓库在此集中声明，避免各模块各自 open() 导致版本号与建仓逻辑散落
+// settings（设置）、mirror（镜像）、meta（元数据）、reading（阅读位置/最近打开）、
+// assets（资源缓存）、drafts（本机未提交草稿）在此集中声明，
+// 避免各模块各自 open() 导致版本号与建仓逻辑散落
 // （评审：跨模块 Shotgun Surgery 点）。
 
 export const DB_NAME = 'md-mirror'
@@ -9,15 +10,17 @@ export const STORE_MIRROR = 'mirror'
 export const STORE_META = 'meta'
 export const STORE_READING = 'reading'
 export const STORE_ASSETS = 'assets'
+export const STORE_DRAFTS = 'drafts'
 
-const DB_VERSION = 4
+const DB_VERSION = 5
 
 const SCHEMA: Array<[string, IDBObjectStoreParameters | undefined]> = [
   [STORE_SETTINGS, undefined],
   [STORE_MIRROR, { keyPath: 'path' }],
   [STORE_META, { keyPath: 'key' }],
   [STORE_READING, { keyPath: 'path' }],
-  [STORE_ASSETS, { keyPath: 'path' }]
+  [STORE_ASSETS, { keyPath: 'path' }],
+  [STORE_DRAFTS, { keyPath: 'path' }]
 ]
 
 let dbPromise: Promise<IDBDatabase> | null = null

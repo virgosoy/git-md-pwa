@@ -6,9 +6,11 @@ import type { StoredFile } from '../mirror/store'
 export interface NotesListProps {
   files: StoredFile[]
   onOpen: (path: string) => void
+  /** 有未提交草稿的 path（回写开关开启时才传入） */
+  draftPaths?: ReadonlySet<string>
 }
 
-export function NotesList({ files, onOpen }: NotesListProps) {
+export function NotesList({ files, onOpen, draftPaths }: NotesListProps) {
   const byPath = new Map(files.map((f) => [f.path, f]))
   const groups = groupNotesByTopDir(files.map((f) => f.path))
 
@@ -24,6 +26,7 @@ export function NotesList({ files, onOpen }: NotesListProps) {
                 <li key={path}>
                   <button class="recent__item" onClick={() => onOpen(path)}>
                     {f.status === 'too-large' ? `⚠ ${path}（未镜像）` : path}
+                    {draftPaths?.has(path) && <span class="draft-mark">草稿</span>}
                   </button>
                 </li>
               )

@@ -8,6 +8,7 @@ import { wipeDb } from '../test/wipeDb'
 import { installFakeCaches } from '../test/fakeCaches'
 import { waitFor } from '../test/wait'
 import { button } from '../test/dom'
+import { loadDraft, saveDraft } from '../write/draft'
 
 // 清理动作的失败路径需要让 store 抛错；默认委托真实实现，其余导出保持原样。
 vi.mock('../assets/store', async (importOriginal) => {
@@ -19,7 +20,7 @@ vi.mock('../mirror/store', async (importOriginal) => {
   return { ...actual, clearMirror: vi.fn(actual.clearMirror) }
 })
 
-// 设置页「本机存储」组件：统计完成后展示五行 + 总量；某类失败时给「—」。
+// 设置页「本机存储」组件：统计完成后展示分类行 + 总量；某类失败时给「—」。
 // 清理资源缓存 / 清空笔记镜像：两步确认、取消不删、确认后刷新统计、失败不破坏数据。
 
 async function seedNote(): Promise<void> {
@@ -59,7 +60,7 @@ describe('StorageUsage', () => {
     vi.unstubAllGlobals()
   })
 
-  it('展示总量、四类明细与开销行', async () => {
+  it('展示总量、分类明细与开销行；无草稿时不显示草稿行', async () => {
     await seedNote()
     installFakeCaches([])
     const c = mount()
@@ -71,6 +72,38 @@ describe('StorageUsage', () => {
     expect(row(c, '笔记')?.querySelector('.storage__count')?.textContent).toBe('1 篇')
     expect(row(c, '笔记')?.querySelector('.storage__size')?.textContent).toBe('2 B')
     expect(row(c, '记录与索引开销')?.querySelector('.storage__size')?.textContent).toBe('20 B')
+    expect(row(c, '草稿')).toBeUndefined()
+  })
+
+  it('有草稿时单列「草稿」行；清空镜像会提示并删除', async () => {
+    await upsertFile({ path: 'a.md', sha: 's1', content: 'hi', size: 2, status: 'ok' })
+    await saveDraft({
+      path: 'a.md',
+      content: '# draft',
+      baseSha: 's1',
+      eol: 'lf',
+      updatedAt: 1
+    })
+    installFakeCaches([])
+    const c = mount()
+    await waitFor(() => (c.textContent ?? '').includes('共 '))
+
+    expect(row(c, '笔记')?.querySelector('.storage__size')?.textContent).toBe('2 B')
+    expect(row(c, '草稿')?.querySelector('.storage__count')?.textContent).toBe('1 份')
+    expect(row(c, '草稿')?.querySelector('.storage__size')?.textContent).toBe('7 B')
+    // 正文 2 + 7；记录/主键 20 + 20
+    expect(c.textContent).toContain('共 49 B')
+
+    button(c, '清空笔记镜像').click()
+    await waitFor(() => (c.textContent ?? '').includes('将删除本机镜像'))
+    const confirmText = c.querySelector('.storage__confirm')?.textContent ?? ''
+    expect(confirmText).toContain('另有 1 份未提交草稿（约 7 B）会一并删除')
+
+    button(c, '确认清空').click()
+    await waitFor(() => (c.textContent ?? '').includes('已清空'))
+    expect(c.textContent).toContain('已清空本机笔记（1 篇，约 2 B，另有 1 份草稿）')
+    await waitFor(() => row(c, '草稿') === undefined)
+    expect(await loadDraft('a.md')).toBeUndefined()
   })
 
   it('某一类读取失败：该行与总量显示「—」，其余照常', async () => {

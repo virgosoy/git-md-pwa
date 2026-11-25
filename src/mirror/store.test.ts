@@ -11,6 +11,7 @@ import {
 } from './store'
 import { listRecent, saveScroll } from '../reader/reading'
 import { loadSettings, saveSettings } from '../settings/store'
+import { loadDraft, saveDraft } from '../write/draft'
 import type { MirrorFile } from './tree'
 import type { StoredFile } from './store'
 import { wipeDb } from '../test/wipeDb'
@@ -121,7 +122,13 @@ describe('clearMirror（清空本机笔记镜像）', () => {
     await saveSettings({ token: 'ghp_test_dummy', owner: 'me', repo: 'fixtures' })
 
     // 'hi' = 2 B，'中文' = 4 B；占位正文为空不计字节
-    expect(await clearMirror()).toEqual({ count: 2, skipped: 1, bytes: 6 })
+    expect(await clearMirror()).toEqual({
+      count: 2,
+      skipped: 1,
+      bytes: 6,
+      drafts: 0,
+      draftBytes: 0
+    })
 
     expect(await loadFiles()).toEqual([])
     expect(await loadMirrorMeta()).toBeNull()
@@ -133,7 +140,42 @@ describe('clearMirror（清空本机笔记镜像）', () => {
   })
 
   it('空库返回零，不抛错', async () => {
-    expect(await clearMirror()).toEqual({ count: 0, skipped: 0, bytes: 0 })
+    expect(await clearMirror()).toEqual({
+      count: 0,
+      skipped: 0,
+      bytes: 0,
+      drafts: 0,
+      draftBytes: 0
+    })
     expect(await loadFiles()).toEqual([])
+  })
+
+  it('一并删除未提交草稿，并返回草稿条数与字节', async () => {
+    await upsertFile({ path: 'a.md', sha: 's1', content: 'hi', size: 2, status: 'ok' })
+    await saveDraft({
+      path: 'a.md',
+      content: '# draft',
+      baseSha: 's1',
+      eol: 'lf',
+      updatedAt: 1
+    })
+    await saveDraft({
+      path: 'orphan.md',
+      content: '中文',
+      baseSha: 's9',
+      eol: 'lf',
+      updatedAt: 1
+    })
+
+    // 'hi' 2；'# draft' 7；'中文' 4
+    expect(await clearMirror()).toEqual({
+      count: 1,
+      skipped: 0,
+      bytes: 2,
+      drafts: 2,
+      draftBytes: 11
+    })
+    expect(await loadDraft('a.md')).toBeUndefined()
+    expect(await loadDraft('orphan.md')).toBeUndefined()
   })
 })

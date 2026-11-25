@@ -103,3 +103,39 @@ describe('SettingsView 资源自动下载开关（23）', () => {
     expect(s.autoDownloadAssets).toBe(false)
   })
 })
+
+describe('SettingsView 回写开关（26）', () => {
+  beforeEach(async () => {
+    await wipeDb()
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+    vi.unstubAllGlobals()
+  })
+
+  it('默认关闭；有草稿时提示不会被删除；勾选保存后落盘', async () => {
+    await saveSettings({ owner: 'me', repo: 'fixtures' })
+    installFakeCaches([])
+    const c = document.createElement('div')
+    document.body.appendChild(c)
+    render(<SettingsView onClose={() => {}} draftCount={2} />, c)
+
+    const label = [...c.querySelectorAll('label')].find((l) =>
+      (l.textContent ?? '').includes('回写：允许在手机上编辑')
+    )
+    expect(label).toBeTruthy()
+    const box = label!.querySelector('input[type="checkbox"]') as HTMLInputElement
+    await waitFor(() => !box.disabled)
+    expect(box.checked).toBe(false)
+    expect(c.textContent).toContain('本机有 2 份未提交草稿；关闭回写不会删除它们')
+
+    box.click()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(c.textContent).not.toContain('本机有 2 份未提交草稿')
+
+    ;(c.querySelector('button[type="submit"]') as HTMLButtonElement).click()
+    await waitFor(() => (c.textContent ?? '').includes('已保存'))
+    expect((await loadSettings()).writeBackEnabled).toBe(true)
+  })
+})

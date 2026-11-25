@@ -563,3 +563,185 @@ mark.search-hit {
   border-radius: 0.15rem;
   padding: 0 0.05rem;
 }
+
+/* 26 · 回写：草稿提示、编辑器与冲突面板 */
+.draft-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--panel-bg);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.draft-banner__text {
+  color: var(--muted);
+}
+
+.draft-mark {
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 0.7rem;
+  vertical-align: middle;
+}
+
+.editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem 0;
+}
+
+.editor__seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.editor__seg button {
+  appearance: none;
+  border: 0;
+  background: var(--surface);
+  color: var(--fg);
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+}
+
+.editor__seg button.is-active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.editor__discard {
+  font-size: 0.8rem;
+}
+
+.editor__hint {
+  margin: 0.4rem 1rem 0.5rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.editor__confirm {
+  margin: 0 1rem 0.5rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--danger);
+  border-radius: 0.5rem;
+  background: var(--panel-bg);
+  font-size: 0.85rem;
+}
+
+.editor__confirm-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.editor__text {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 0.8rem 1rem 1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* 1rem：iOS Safari 对 <16px 的输入框会自动放大页面 */
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.editor__text:focus {
+  outline: none;
+}
+
+.editor__preview {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+}
+
+.conflict {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(1rem + env(safe-area-inset-top)) 1rem
+    calc(1rem + env(safe-area-inset-bottom));
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.conflict__box {
+  width: 100%;
+  max-width: 34rem;
+  max-height: 100%;
+  overflow: auto;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  box-shadow: 0 8px 30px var(--shadow);
+}
+
+.conflict__title {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.conflict__hint {
+  margin: 0.3rem 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.conflict__remote {
+  max-height: 45vh;
+  overflow: auto;
+  margin: 0.6rem 0;
+  padding: 0.7rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.conflict__error {
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
+.conflict__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.75rem;
+}
+
+.conflict__actions .conflict__hint {
+  flex-basis: 100%;
+  margin: 0 0 0.25rem;
+}

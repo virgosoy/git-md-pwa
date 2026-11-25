@@ -281,6 +281,8 @@ export interface ReaderViewProps {
   tocPinned?: boolean
   /** 固定开关变化回调（由 App 持久化到 settings）；UI 即时生效 */
   onTocPinChange?: (next: boolean) => void
+  /** 是否装配浮动 TOC（编辑器预览用 false，不出现目录按钮；正文标题 id 仍会赋值） */
+  showToc?: boolean
   /** 09 单篇查找：find 打开态由 App 顶栏🔍控制（开/关两向），本组件关（✕/Esc）时调 onFindClose */
   findOpen?: boolean
   onFindClose?: () => void
@@ -302,6 +304,7 @@ export function ReaderView({
   theme = 'dark',
   tocPinned = false,
   onTocPinChange,
+  showToc = true,
   findOpen = false,
   onFindClose,
   onOpenNote,
@@ -479,7 +482,7 @@ export function ReaderView({
       // 旧 scroll 监听，否则会一直指向已断开的节点。
       detachToc()
       const toc = assignHeadingIds(mdBody)
-      if (toc.length >= 2) {
+      if (showToc && toc.length >= 2) {
         detachToc = attachTocChrome(
           shadowEl,
           hostEl,
@@ -511,7 +514,7 @@ export function ReaderView({
       alive = false
       detachToc()
     }
-  }, [path, content, initialScrollTop, assetLoader, refreshToken, autoDownloadAssets, renderMath, renderMermaid])
+  }, [path, content, initialScrollTop, assetLoader, refreshToken, autoDownloadAssets, renderMath, renderMermaid, showToc])
 
   // 25 · 主题切换只换代码高亮样式表，不重渲染正文（避免重新装配资源 / TOC）。
   useLayoutEffect(() => {

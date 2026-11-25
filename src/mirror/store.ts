@@ -3,7 +3,7 @@
 // （对象仓库 mirror[path]、meta[key]，schema 由 src/idb.ts 统一拥有）。
 // 纯 diff 计算在这里，供镜像编排复用。
 
-import { STORE_META, STORE_MIRROR, withStore, withStores } from '../idb'
+import { STORE_DRAFTS, STORE_META, STORE_MIRROR, withStore, withStores } from '../idb'
 import { stringBytes } from '../lib/bytes'
 import { clearReadingIn, READING_STORE } from '../reader/reading'
 
@@ -77,11 +77,19 @@ export interface ClearedMirror {
   skipped: number
   /** 被删正文的字节估算之和（与存储统计同一口径） */
   bytes: number
+  /** 一并删除的未提交草稿条数 */
+  drafts: number
+  /** 被删草稿正文的字节估算之和 */
+  draftBytes: number
+}
+
+interface DraftLike {
+  content: string
 }
 
 /**
- * 清空本机笔记镜像：mirror 全表 + meta 同步记录 + reading 阅读位置一起删除，
- * settings 与 assets 不动。三表在同一事务里完成，失败整体回滚。
+ * 清空本机笔记镜像：mirror 全表 + meta 同步记录 + reading 阅读位置 + drafts 草稿
+ * 一起删除，settings 与 assets 不动。四表在同一事务里完成，失败整体回滚。
  *
  * 必须删 meta：mirrorRepo 的版本门（meta.commitSha === tree.sha 直接返回 0 拉取）
  * 会在 meta 残留时把清空后的同步短路，导致笔记永远拉不回来。
@@ -90,8 +98,10 @@ export async function clearMirror(): Promise<ClearedMirror> {
   let count = 0
   let skipped = 0
   let bytes = 0
+  let draftCount = 0
+  let draftBytes = 0
 
-  await withStores([STORE_MIRROR, STORE_META, READING_STORE], (tx) => {
+  await withStores([STORE_MIRROR, STORE_META, READING_STORE, STORE_DRAFTS], (tx) => {
     const mirror = tx.objectStore(STORE_MIRROR)
     // getAll 先于 clear 排队，读到的是清空前的内容
     const all = mirror.getAll() as IDBRequest<StoredFile[]>
@@ -105,9 +115,17 @@ export async function clearMirror(): Promise<ClearedMirror> {
     mirror.clear()
     tx.objectStore(STORE_META).delete(MIRROR_META_KEY)
     clearReadingIn(tx)
+
+    const drafts = tx.objectStore(STORE_DRAFTS)
+    const allDrafts = drafts.getAll() as IDBRequest<DraftLike[]>
+    allDrafts.onsuccess = () => {
+      draftCount = allDrafts.result.length
+      for (const d of allDrafts.result) draftBytes += stringBytes(d.content)
+    }
+    drafts.clear()
   })
 
-  return { count, skipped, bytes }
+  return { count, skipped, bytes, drafts: draftCount, draftBytes }
 }
 
 /** 纯函数：本地镜像与远端文件集比对，得出要拉/要占位/要删。 */

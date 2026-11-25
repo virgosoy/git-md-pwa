@@ -96,3 +96,104 @@ describe('GithubClient', () => {
     })
   })
 })
+
+describe('GithubClient 回写', () => {
+  it('getFileContent 解析 base64 正文与 blob sha', async () => {
+    const log: Log = { urls: [], inits: [] }
+    const fakeFetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      log.urls.push(String(url))
+      log.inits.push(init ?? {})
+      return new Response(
+        JSON.stringify({ sha: 'b1', content: '5Lit5paHCg==', encoding: 'base64', size: 7 }),
+        { status: 200 }
+      )
+    }) as typeof fetch
+    const client = createGithubClient('t', fakeFetch)
+
+    const file = await client.getFileContent({ owner: 'me', repo: 'fixtures' }, 'docs/notes.md')
+
+    expect(file).toEqual({ sha: 'b1', content: '中文\n' })
+    expect(log.urls[0]).toBe(
+      'https://api.github.com/repos/me/fixtures/contents/docs/notes.md?ref=HEAD'
+    )
+    expect((log.inits[0].headers as Record<string, string>).Accept).toBe(
+      'application/vnd.github+json'
+    )
+  })
+
+  it('getFileContent 超过 1MB（无内联 content）时回退 raw 取正文', async () => {
+    const log: Log = { urls: [], inits: [] }
+    const fakeFetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      log.urls.push(String(url))
+      log.inits.push(init ?? {})
+      const accept = (init?.headers as Record<string, string>).Accept
+      if (accept === 'application/vnd.github.raw+json') return new Response('# big')
+      return new Response(
+        JSON.stringify({ sha: 'b2', content: '', encoding: 'none', size: 2000000 }),
+        { status: 200 }
+      )
+    }) as typeof fetch
+    const client = createGithubClient('t', fakeFetch)
+
+    const file = await client.getFileContent({ owner: 'me', repo: 'fixtures' }, 'big.md')
+
+    expect(file).toEqual({ sha: 'b2', content: '# big' })
+    expect(log.urls).toHaveLength(2)
+  })
+
+  it('putFile 走 PUT、base64 正文 + sha + message，且不带 API 版本头', async () => {
+    const log: Log = { urls: [], inits: [] }
+    const fakeFetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      log.urls.push(String(url))
+      log.inits.push(init ?? {})
+      return new Response(JSON.stringify({ content: { sha: 'new' }, commit: { sha: 'c1' } }), {
+        status: 200
+      })
+    }) as typeof fetch
+    const client = createGithubClient('t', fakeFetch)
+
+    const result = await client.putFile({ owner: 'me', repo: 'fixtures' }, 'a.md', {
+      content: '# hi\n',
+      sha: 'old',
+      message: '手机编辑：a.md'
+    })
+
+    expect(result).toEqual({ sha: 'new', commitSha: 'c1' })
+    expect(log.urls[0]).toBe(
+      'https://api.github.com/repos/me/fixtures/contents/a.md'
+    )
+    const init = log.inits[0]
+    expect(init.method).toBe('PUT')
+    const headers = init.headers as Record<string, string>
+    expect(headers.Authorization).toBe('Bearer t')
+    expect(headers['Content-Type']).toBe('application/json')
+    expect(headers['X-GitHub-Api-Version']).toBeUndefined()
+    expect(JSON.parse(String(init.body))).toEqual({
+      message: '手机编辑：a.md',
+      content: 'IyBoaQo=',
+      sha: 'old'
+    })
+  })
+
+  it('putFile 省略 sha 时不发送该字段（新建文件）', async () => {
+    const log: Log = { urls: [], inits: [] }
+    const fakeFetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      log.urls.push(String(url))
+      log.inits.push(init ?? {})
+      return new Response(JSON.stringify({ content: { sha: 'new' }, commit: { sha: 'c1' } }), {
+        status: 201
+      })
+    }) as typeof fetch
+    const client = createGithubClient('t', fakeFetch)
+
+    await client.putFile({ owner: 'me', repo: 'fixtures' }, 'a.md', {
+      content: '',
+      message: '手机编辑：a.md'
+    })
+
+    expect(JSON.parse(String(log.inits[0].body))).toEqual({
+      message: '手机编辑：a.md',
+      content: ''
+    })
+  })
+})
