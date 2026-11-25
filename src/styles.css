@@ -16,6 +16,8 @@
   /* 09 单篇查找：命中高亮 / 当前命中（CSS 变量跨 shadow 边界继承到 baseNoteCss） */
   --find-hit: rgba(63, 131, 248, 0.35);
   --find-hit-current: #3f83f8;
+  /* 25 状态栏底色：深色主题页面本身够暗，不需要额外色带 */
+  --status-bar-bg: transparent;
 }
 
 /* 主题切换（25）：设置页选「浅色」时 <html data-theme="light">。
@@ -33,6 +35,9 @@
   --error: #b91c1c;
   --error-bg: rgba(185, 28, 28, 0.08);
   --find-hit: rgba(63, 131, 248, 0.25);
+  /* 主屏幕 App 的状态栏固定白字（black-translucent）；浅底上白字不可读，
+     用与深色页面同色的带子垫在状态栏下。 */
+  --status-bar-bg: #18181b;
 }
 
 * {
@@ -52,6 +57,21 @@ body {
   color: var(--fg);
   font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* 25：状态栏区域（viewport-fit=cover 下的安全区顶部）垫一层底色。
+   深色主题透明（页面本身够暗）；浅色主题为深色，保证 iOS 状态栏白字可读。
+   safe-area-inset-top 在 Safari 无刘海布局时为 0，带子自动消失。 */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  background: var(--status-bar-bg, transparent);
+  z-index: 10;
+  pointer-events: none;
 }
 
 .app {
