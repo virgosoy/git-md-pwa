@@ -32,7 +32,8 @@ This repository is **public** (GitHub Pages hosting requires it). It must never 
 - `src/app.tsx` — 页面编排（首页 ↔ 阅读器 ↔ 设置）。首页列表与阅读器共用 `.app__main` 滚动容器：进阅读器前记住滚动位置，返回时像素级还原（票 22；内链切篇不覆盖最初位置）。
 - `src/search/{index,SearchResults}.tsx` — 全局标题搜索（H1–H6 + 文件名/路径；命中标「文件」/「标题 H{n}」，可双标）。标题文本取 markdown-it 行内子 token 拼纯文本（与渲染后 textContent 对齐）；标题行可点击，打开笔记并跳到该标题（按 level+text+nth 对齐，票 21）。
 - `src/assets/{extract,store,pipeline,wire}.ts` — 资源懒加载：API 拉字节→dataURL 入 `assets` 表→装配给 img/a；>10MB 占位；「全下」。
-- `src/settings/{store,SettingsView}.tsx` — 设置（PAT / owner/repo / 同步开关默认开、公式 KaTeX / Mermaid 开关默认关；公开库令牌可不填）。
+- `src/settings/{store,SettingsView}.tsx` — 设置（PAT / owner/repo / 同步开关默认开、主题默认深色、公式 KaTeX / Mermaid 开关默认关；公开库令牌可不填）。
+- `src/theme/theme.ts` — 主题模式（`dark`/`light`/`system`）解析为实际深/浅色，写 `<html data-theme>` 并同步 meta `theme-color`；`system` 由 App 监听系统偏好实时切换。CSS 变量在 `src/styles.css`，阅读器 Shadow DOM 经变量继承，代码高亮按解析值换 github / github-dark。
 - `src/storage/{format,estimate,StorageUsage}.ts(x)` — 本机存储占用（自算 IDB 四表 + Cache Storage，不用 `navigator.storage`）与清理入口（图片等资源、笔记镜像；均两步确认）。
 - `src/updates/{version,format,manualNote,installed,store,useUpdate,UpdateBanner}.ts` — PWA 更新编排：prompt 模式「发现新版本」横幅（Q8：同版本只提示一次，记住到 settings）＋在线每 10 分钟周期复查＋Settings「检查更新」（永远 verbose）。版本串 `v<semver>+<git短SHA>` 经 vite `define` 注入 `__APP_VERSION__`，同串构建期写 `dist/version.json`（不入预缓存、只走网络，更新检测读它）。手动检查的结果分型（update 失败/超时/无 registration/无新 SW）由 `manualNote.ts` 纯函数映射成文案；「新版本已装好、只差重开」由 `installed.ts` 读本机 Workbox 预缓存首页、对比当前页面脚本判定；手动检查时间经 `store.ts` 持久化到 meta 表（选项重开 App 仍显示「上次检查」，周期复查不写）。
 

@@ -15,7 +15,9 @@ import { classifyLink, resolveNotePath } from './links'
 import { wireAssets } from '../assets/wire'
 import type { AssetLoader } from '../assets/wire'
 import { applyFind, setCurrentMark, clearMarks } from './find'
-import highlightCss from 'highlight.js/styles/github-dark.css?raw'
+import type { ResolvedTheme } from '../theme/theme'
+import highlightDarkCss from 'highlight.js/styles/github-dark.css?raw'
+import highlightLightCss from 'highlight.js/styles/github.css?raw'
 
 // 注入 shadow 的笔记基础排版（浏览器 UA 样式在 shadow 里很简陋）
 const baseNoteCss = `
@@ -25,39 +27,39 @@ const baseNoteCss = `
   font-size: 1rem;
   overflow-wrap: break-word;
 }
-.md-body pre { background: #0b0b0e; padding: 0.9rem; border-radius: 0.5rem; overflow-x: auto; }
+.md-body pre { background: var(--code-bg, #0b0b0e); padding: 0.9rem; border-radius: 0.5rem; overflow-x: auto; }
 .md-body code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-.md-body a { color: #3f83f8; }
-.md-body a.is-missing { color: #a1a1aa; text-decoration: none; }
-.md-body a.is-missing::after { content: "（未镜像）"; color: #a1a1aa; font-size: 0.8em; }
-.md-body a.is-not-downloaded { color: #a1a1aa; text-decoration: none; cursor: pointer; }
-.md-body a.is-not-downloaded::after { content: "（未下载）"; color: #a1a1aa; font-size: 0.8em; }
+.md-body a { color: var(--accent, #3f83f8); }
+.md-body a.is-missing { color: var(--muted, #a1a1aa); text-decoration: none; }
+.md-body a.is-missing::after { content: "（未镜像）"; color: var(--muted, #a1a1aa); font-size: 0.8em; }
+.md-body a.is-not-downloaded { color: var(--muted, #a1a1aa); text-decoration: none; cursor: pointer; }
+.md-body a.is-not-downloaded::after { content: "（未下载）"; color: var(--muted, #a1a1aa); font-size: 0.8em; }
 .md-body img { max-width: 100%; }
 .md-body table { border-collapse: collapse; }
-.md-body th, .md-body td { border: 1px solid #3f3f46; padding: 0.35rem 0.6rem; }
-.md-body blockquote { border-left: 3px solid #3f3f46; margin: 0; padding-left: 0.8rem; color: #a1a1aa; }
+.md-body th, .md-body td { border: 1px solid var(--border, #3f3f46); padding: 0.35rem 0.6rem; }
+.md-body blockquote { border-left: 3px solid var(--border, #3f3f46); margin: 0; padding-left: 0.8rem; color: var(--muted, #a1a1aa); }
 .md-body .katex-error {
   /* 07a：公式语法错误的降级红块（katex CSS 未定义 .katex-error 颜色，行内/块公式都要可见） */
-  color: #cc0000;
-  background: rgba(204, 0, 0, 0.06);
+  color: var(--error, #cc0000);
+  background: var(--error-bg, rgba(204, 0, 0, 0.06));
   padding: 0.2em 0.4em;
   border-radius: 0.25em;
 }
 .md-body .md-mermaid { margin: 1rem 0; overflow-x: auto; }
 .md-body .md-mermaid svg { max-width: 100%; height: auto; }
-.md-body .md-mermaid-error { color: #cc0000; font-size: 0.85em; margin: 0.25rem 0 0; }
+.md-body .md-mermaid-error { color: var(--error, #cc0000); font-size: 0.85em; margin: 0.25rem 0 0; }
 /* 08：单篇 TOC 浮动按钮 + 面板（shadow 内作用域；fixed 视口定位，.reader 无 transform 祖先） */
 .reader-toc { position: fixed; right: 1rem; bottom: 4.75rem; z-index: 20; }
 .reader-toc__toggle {
-  appearance: none; border: 1px solid #3f3f46; background: #27272a; color: #e4e4e7;
+  appearance: none; border: 1px solid var(--border, #3f3f46); background: var(--surface, #27272a); color: var(--fg, #e4e4e7);
   border-radius: 999px; padding: 0.45rem 0.9rem; font-size: 0.85rem; cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 2px 8px var(--shadow, rgba(0, 0, 0, 0.35));
 }
-.reader-toc__toggle.is-active, .reader-toc__toggle:active { background: #3f83f8; border-color: #3f83f8; color: #fff; }
+.reader-toc__toggle.is-active, .reader-toc__toggle:active { background: var(--accent, #3f83f8); border-color: var(--accent, #3f83f8); color: var(--on-accent, #fff); }
 /* 11：面板头部（目录 + 固定）固定在面板顶，只有条目列表滚动 */
 .reader-toc__panel {
   display: none; position: absolute; right: 0; bottom: calc(100% + 0.5rem); width: 15rem;
-  background: #1f1f23; border: 1px solid #3f3f46;
+  background: var(--panel-bg, #1f1f23); border: 1px solid var(--border, #3f3f46);
   border-radius: 0.5rem; padding: 0.5rem;
 }
 .reader-toc__panel.is-open { display: block; }
@@ -65,36 +67,36 @@ const baseNoteCss = `
   max-height: 40vh; overflow-y: auto; margin-top: 0.5rem;
 }
 .reader-toc__item {
-  display: block; width: 100%; text-align: left; border: 0; background: none; color: #d4d4d8;
+  display: block; width: 100%; text-align: left; border: 0; background: none; color: var(--fg, #d4d4d8);
   font-size: 0.85rem; line-height: 1.4; padding: 0.25rem 0; cursor: pointer;
 }
-.reader-toc__item.is-current { color: #3f83f8; font-weight: 600; }
+.reader-toc__item.is-current { color: var(--accent, #3f83f8); font-weight: 600; }
 .reader-toc__head {
   display: flex; align-items: center; justify-content: space-between;
-  border-bottom: 1px solid #3f3f46; padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border, #3f3f46); padding-bottom: 0.35rem;
 }
-.reader-toc__title { font-size: 0.8rem; color: #a1a1aa; }
+.reader-toc__title { font-size: 0.8rem; color: var(--muted, #a1a1aa); }
 .reader-toc__pin {
-  appearance: none; border: 1px solid #3f3f46; background: none; color: #a1a1aa;
+  appearance: none; border: 1px solid var(--border, #3f3f46); background: none; color: var(--muted, #a1a1aa);
   border-radius: 999px; font-size: 0.75rem; padding: 0.1rem 0.55rem; cursor: pointer;
 }
-.reader-toc__pin.is-active { color: #fff; background: #3f83f8; border-color: #3f83f8; }
+.reader-toc__pin.is-active { color: var(--on-accent, #fff); background: var(--accent, #3f83f8); border-color: var(--accent, #3f83f8); }
 /* 13：目录搜索框（仅筛选标题）——头部下窄输入 + ✕ 清空 + 无匹配提示 */
 .reader-toc__filter { display: flex; gap: 0.3rem; margin-top: 0.5rem; }
 .reader-toc__search {
-  flex: 1; min-width: 0; appearance: none; background: #18181b; color: #e4e4e7;
-  border: 1px solid #3f3f46; border-radius: 0.375rem; padding: 0.25rem 0.5rem;
+  flex: 1; min-width: 0; appearance: none; background: var(--bg, #18181b); color: var(--fg, #e4e4e7);
+  border: 1px solid var(--border, #3f3f46); border-radius: 0.375rem; padding: 0.25rem 0.5rem;
   font-size: 0.8rem;
 }
-.reader-toc__search:focus { outline: none; border-color: #3f83f8; }
+.reader-toc__search:focus { outline: none; border-color: var(--accent, #3f83f8); }
 .reader-toc__search::-webkit-search-cancel-button { display: none; }
 .reader-toc__clear {
-  appearance: none; border: 1px solid #3f3f46; background: none; color: #a1a1aa;
+  appearance: none; border: 1px solid var(--border, #3f3f46); background: none; color: var(--muted, #a1a1aa);
   border-radius: 0.375rem; font-size: 0.75rem; line-height: 1; padding: 0 0.45rem;
   cursor: pointer; flex-shrink: 0;
 }
 .reader-toc__clear[hidden] { display: none; }
-.reader-toc__empty { font-size: 0.8rem; color: #a1a1aa; text-align: center; margin: 0.25rem 0 0; }
+.reader-toc__empty { font-size: 0.8rem; color: var(--muted, #a1a1aa); text-align: center; margin: 0.25rem 0 0; }
 /* 09：单篇查找高亮（mark 在 shadow 内；配色随 :root token，跨 shadow 边界继承） */
 .md-body mark.find-hit {
   background: var(--find-hit, rgba(63, 131, 248, 0.35));
@@ -102,8 +104,8 @@ const baseNoteCss = `
   border-radius: 2px;
 }
 .md-body mark.find-hit.is-current {
-  background: var(--find-hit-current, #3f83f8);
-  color: #fff;
+  background: var(--find-hit-current, var(--accent, #3f83f8));
+  color: var(--on-accent, #fff);
 }
 `
 
@@ -273,6 +275,8 @@ export interface ReaderViewProps {
   renderMath?: boolean
   /** 渲染 Mermaid 图表（07b）；关/无围栏→```mermaid 当普通代码块 */
   renderMermaid?: boolean
+  /** 25 · 实际应用的主题：浅色时换用 github 浅色代码高亮（默认深色） */
+  theme?: ResolvedTheme
   /** 单篇 TOC 固定偏好（08 增强）：true=点目录条目后面板保持展开；随设置全局存储 */
   tocPinned?: boolean
   /** 固定开关变化回调（由 App 持久化到 settings）；UI 即时生效 */
@@ -295,6 +299,7 @@ export function ReaderView({
   autoDownloadAssets = true,
   renderMath = false,
   renderMermaid = false,
+  theme = 'dark',
   tocPinned = false,
   onTocPinChange,
   findOpen = false,
@@ -428,7 +433,9 @@ export function ReaderView({
     prevPathRef.current = path
     // 骨架（基础排版 + 高亮 + 容器）先同步落位；正文内容由 fill 填充。
     // 07a：开公式时才动态 import('./math') 拿引擎与 KaTeX CSS，避免主包常驻 katex。
-    shadowEl.innerHTML = `<style>${baseNoteCss}</style><style>${highlightCss}</style><div class="md-body"></div>`
+    shadowEl.innerHTML = `<style>${baseNoteCss}</style><style data-highlight>${
+      theme === 'light' ? highlightLightCss : highlightDarkCss
+    }</style><div class="md-body"></div>`
     shadowEl.querySelectorAll('style[data-katex]').forEach((s) => s.remove())
     const mdBody = shadowEl.querySelector('.md-body') as HTMLDivElement
 
@@ -505,6 +512,12 @@ export function ReaderView({
       detachToc()
     }
   }, [path, content, initialScrollTop, assetLoader, refreshToken, autoDownloadAssets, renderMath, renderMermaid])
+
+  // 25 · 主题切换只换代码高亮样式表，不重渲染正文（避免重新装配资源 / TOC）。
+  useLayoutEffect(() => {
+    const style = rootRef.current?.querySelector<HTMLStyleElement>('style[data-highlight]')
+    if (style) style.textContent = theme === 'light' ? highlightLightCss : highlightDarkCss
+  }, [theme])
 
   return (
     <>

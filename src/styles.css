@@ -1,14 +1,38 @@
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
   --bg: #18181b;
   --fg: #f4f4f5;
   --muted: #a1a1aa;
   --accent: #3f83f8;
   --danger: #e5484d;
   --surface: #27272a;
+  --border: #3f3f46;
+  --on-accent: #fff;
+  --code-bg: #0b0b0e;
+  --panel-bg: #1f1f23;
+  --shadow: rgba(0, 0, 0, 0.35);
+  --error: #cc0000;
+  --error-bg: rgba(204, 0, 0, 0.06);
   /* 09 单篇查找：命中高亮 / 当前命中（CSS 变量跨 shadow 边界继承到 baseNoteCss） */
   --find-hit: rgba(63, 131, 248, 0.35);
   --find-hit-current: #3f83f8;
+}
+
+/* 主题切换（25）：设置页选「浅色」时 <html data-theme="light">。
+   跟随系统由 App 解析成 light/dark 后写同一个属性，CSS 只认解析值。 */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #fafafa;
+  --fg: #18181b;
+  --muted: #52525b;
+  --surface: #e4e4e7;
+  --border: #d4d4d8;
+  --code-bg: #ffffff;
+  --panel-bg: #ffffff;
+  --shadow: rgba(0, 0, 0, 0.12);
+  --error: #b91c1c;
+  --error-bg: rgba(185, 28, 28, 0.08);
+  --find-hit: rgba(63, 131, 248, 0.25);
 }
 
 * {
@@ -88,13 +112,13 @@ body {
 .btn--primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .btn--danger {
   background: var(--danger);
   border-color: var(--danger);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 /* 设置表单 */
@@ -205,7 +229,7 @@ body {
   font-size: 0.82rem;
   color: var(--muted);
   background: var(--surface);
-  border-bottom: 1px solid #3f3f46;
+  border-bottom: 1px solid var(--border);
 }
 
 /* 更新横幅（Q5：顶栏下细横幅，accent 色以示有新版） */
@@ -216,7 +240,7 @@ body {
   gap: 0.5rem;
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
-  color: #fff;
+  color: var(--on-accent);
   background: var(--accent);
   border-bottom: 1px solid rgba(0, 0, 0, 0.2);
 }
@@ -235,7 +259,7 @@ body {
   appearance: none;
   border: 1px solid rgba(255, 255, 255, 0.65);
   background: transparent;
-  color: #fff;
+  color: var(--on-accent);
   border-radius: 0.4rem;
   padding: 0.25rem 0.6rem;
   font-size: 0.82rem;
@@ -360,7 +384,7 @@ body {
   max-width: 42rem;
   padding: 0.8rem 1rem calc(0.8rem + env(safe-area-inset-bottom));
   background: var(--surface);
-  border-top: 1px solid #3f3f46;
+  border-top: 1px solid var(--border);
   color: var(--fg);
   font-size: 0.9rem;
 }
@@ -381,7 +405,7 @@ body {
   top: 0;
   z-index: 2;
   /* 细底边：把悬浮的搜索框与列表隔开 */
-  box-shadow: 0 1px 0 0 #3f3f46;
+  box-shadow: 0 1px 0 0 var(--border);
 }
 
 .search-input:focus {
@@ -396,7 +420,7 @@ body {
   gap: 0.4rem;
   padding: 0.45rem 1rem;
   background: var(--surface);
-  border-bottom: 1px solid #3f3f46;
+  border-bottom: 1px solid var(--border);
 }
 
 .find-input {
@@ -405,7 +429,7 @@ body {
   appearance: none;
   background: var(--bg);
   color: var(--fg);
-  border: 1px solid #3f3f46;
+  border: 1px solid var(--border);
   border-radius: 0.5rem;
   padding: 0.4rem 0.6rem;
   font-size: 0.9rem;
@@ -426,7 +450,7 @@ body {
 
 .find-btn {
   appearance: none;
-  border: 1px solid #3f3f46;
+  border: 1px solid var(--border);
   background: var(--bg);
   color: var(--fg);
   border-radius: 0.4rem;

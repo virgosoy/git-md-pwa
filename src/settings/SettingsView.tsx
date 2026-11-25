@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks'
 import type { AppSettings } from './store'
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from './store'
+import type { ThemeMode } from '../theme/theme'
 import { formatAgo } from '../updates/format'
 import { StorageUsage } from '../storage/StorageUsage'
 
@@ -104,6 +105,24 @@ export function SettingsView({
             onInput={bindText('repo')}
           />
         </div>
+      </label>
+
+      <label class="field">
+        <span class="field__label">主题</span>
+        <select
+          class="field__input"
+          aria-label="主题"
+          value={form.theme}
+          disabled={!loaded}
+          onChange={(e) =>
+            set('theme', (e.target as HTMLSelectElement).value as ThemeMode)
+          }
+        >
+          <option value="dark">深色（默认）</option>
+          <option value="light">浅色</option>
+          <option value="system">跟随系统</option>
+        </select>
+        <span class="field__hint">浅色适合白天；跟随系统会随 iPhone 的外观设置切换。</span>
       </label>
 
       <label class="field field--row">

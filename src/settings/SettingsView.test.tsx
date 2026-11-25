@@ -32,6 +32,40 @@ describe('SettingsView 本机存储', () => {
   })
 })
 
+describe('SettingsView 主题', () => {
+  beforeEach(async () => {
+    await wipeDb()
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+    vi.unstubAllGlobals()
+  })
+
+  it('默认深色；选浅色并保存后落盘', async () => {
+    await saveSettings({ owner: 'me', repo: 'fixtures' })
+    installFakeCaches([])
+    const c = document.createElement('div')
+    document.body.appendChild(c)
+    render(<SettingsView onClose={() => {}} />, c)
+
+    const select = c.querySelector<HTMLSelectElement>('select[aria-label="主题"]')
+    expect(select).toBeTruthy()
+    await waitFor(() => !select!.disabled)
+    expect(select!.value).toBe('dark')
+
+    select!.value = 'light'
+    select!.dispatchEvent(new Event('change', { bubbles: true }))
+    // Preact 批量更新：等 state 落地后再提交
+    await new Promise((r) => setTimeout(r, 0))
+
+    ;(c.querySelector('button[type="submit"]') as HTMLButtonElement).click()
+    await waitFor(() => (c.textContent ?? '').includes('已保存'))
+
+    expect((await loadSettings()).theme).toBe('light')
+  })
+})
+
 describe('SettingsView 资源自动下载开关（23）', () => {
   beforeEach(async () => {
     await wipeDb()

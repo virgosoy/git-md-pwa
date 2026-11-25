@@ -15,7 +15,7 @@ describe('settingsStore', () => {
     await clearSettings()
   })
 
-  it('默认 autoSync 为开、renderMath/renderMermaid/tocPinned 为关，其余字段为空', async () => {
+  it('默认 autoSync 为开、renderMath/renderMermaid/tocPinned 为关，主题为深色，其余字段为空', async () => {
     const s = await loadSettings()
     expect(s).toEqual(DEFAULT_SETTINGS)
     expect(s.autoSync).toBe(true)
@@ -23,7 +23,16 @@ describe('settingsStore', () => {
     expect(s.renderMath).toBe(false)
     expect(s.renderMermaid).toBe(false)
     expect(s.tocPinned).toBe(false)
+    expect(s.theme).toBe('dark')
     expect(s.lastPromptedVersion).toBe('')
+  })
+
+  it('主题默认深色，保存后往返', async () => {
+    expect((await loadSettings()).theme).toBe('dark')
+    await saveSettings({ theme: 'light' })
+    expect((await loadSettings()).theme).toBe('light')
+    await saveSettings({ theme: 'system' })
+    expect((await loadSettings()).theme).toBe('system')
   })
 
   it('保存后重新加载，往返保留 token/owner/repo/autoSync/renderMath/renderMermaid/betterHeadingExtract/tocPinned', async () => {
@@ -37,6 +46,7 @@ describe('settingsStore', () => {
       renderMermaid: true,
       betterHeadingExtract: false,
       tocPinned: true,
+      theme: 'light',
       lastPromptedVersion: 'v0.0.1+aaa'
     })
     const s = await loadSettings()
@@ -50,6 +60,7 @@ describe('settingsStore', () => {
       renderMermaid: true,
       betterHeadingExtract: false,
       tocPinned: true,
+      theme: 'light',
       lastPromptedVersion: 'v0.0.1+aaa'
     })
   })
@@ -75,6 +86,7 @@ describe('settingsStore', () => {
       renderMermaid: false,
       betterHeadingExtract: true,
       tocPinned: false,
+      theme: 'dark',
       lastPromptedVersion: ''
     })
   })

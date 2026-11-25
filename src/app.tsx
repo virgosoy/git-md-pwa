@@ -22,6 +22,8 @@ import type { SyncFailKind } from './sync/sync'
 import { SyncBanner } from './sync/SyncBanner'
 import { UpdateBanner } from './updates/UpdateBanner'
 import { useUpdate } from './updates/useUpdate'
+import { applyThemeToDocument, rememberThemeMode, resolveTheme } from './theme/theme'
+import type { ResolvedTheme } from './theme/theme'
 
 interface OpenNote {
   path: string
@@ -43,6 +45,8 @@ const ASSET_REFRESH_DEBOUNCE_MS = 300
 export function App() {
   const updates = useUpdate()
   const [settings, setSettings] = useState<AppSettings | null>(null)
+  // 25 · 解析后的主题：根节点属性给全局 CSS，传给阅读器换代码高亮配色
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>('dark')
   const [showSettings, setShowSettings] = useState(false)
   const [recent, setRecent] = useState<ReadingRecord[]>([])
   const [current, setCurrent] = useState<OpenNote | null>(null)
@@ -206,6 +210,28 @@ export function App() {
       })
       .catch(() => {})
   }, [])
+
+  // 主题：设置模式（含跟随系统）→ <html data-theme> + meta theme-color。
+  // system 时监听系统偏好变化实时切换；light/dark 固定，不依赖系统。
+  useEffect(() => {
+    const mode = settings?.theme
+    if (!mode) return
+    // 同步镜像给 index.html 内联脚本，冷启动首屏就能用对主题
+    rememberThemeMode(mode)
+    const mql =
+      typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        ? window.matchMedia('(prefers-color-scheme: light)')
+        : null
+    const apply = (): void => {
+      const next = resolveTheme(mode, mql?.matches ?? false)
+      setResolvedTheme(next)
+      applyThemeToDocument(next)
+    }
+    apply()
+    if (mode !== 'system' || !mql) return
+    mql.addEventListener('change', apply)
+    return () => mql.removeEventListener('change', apply)
+  }, [settings?.theme])
 
   async function refreshFiles(): Promise<void> {
     try {
@@ -384,6 +410,7 @@ export function App() {
             autoDownloadAssets={settings?.autoDownloadAssets ?? true}
             renderMath={settings?.renderMath ?? false}
             renderMermaid={settings?.renderMermaid ?? false}
+            theme={resolvedTheme}
             tocPinned={settings?.tocPinned ?? false}
             onTocPinChange={(next) => void handleTocPinChange(next)}
             findOpen={findOpen}

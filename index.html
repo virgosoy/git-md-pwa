@@ -4,6 +4,28 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#18181b" />
+    <!-- 首屏防闪：主题模式的同步镜像（src/theme/theme.ts 的 rememberThemeMode 写入）。
+         IDB 读设置是异步的，这里在首帧前先按已存模式定主题与状态栏颜色。
+         颜色与 THEME_COLORS 保持一致（无法在此内联脚本里 import CSS）。 -->
+    <script>
+      ;(function () {
+        try {
+          var mode = localStorage.getItem('md-theme-mode')
+          if (mode !== 'dark' && mode !== 'light' && mode !== 'system') return
+          var light =
+            mode === 'light' ||
+            (mode === 'system' &&
+              typeof window.matchMedia === 'function' &&
+              window.matchMedia('(prefers-color-scheme: light)').matches)
+          var theme = light ? 'light' : 'dark'
+          document.documentElement.dataset.theme = theme
+          var meta = document.querySelector('meta[name="theme-color"]')
+          if (meta) meta.content = light ? '#fafafa' : '#18181b'
+        } catch (e) {
+          // localStorage 被禁：走默认深色
+        }
+      })()
+    </script>
     <title>MD 镜像</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="/icon-512.png" />

@@ -5,6 +5,7 @@
 // 数据库连接与事务由共享模块 src/idb.ts 集中拥有。
 
 import { STORE_SETTINGS, withStore } from '../idb'
+import type { ThemeMode } from '../theme/theme'
 
 export interface AppSettings {
   /** 细粒度只读 PAT（设备本地） */
@@ -20,6 +21,8 @@ export interface AppSettings {
    * 未缓存的不联网（点单个或「全下」才下载）
    */
   autoDownloadAssets: boolean
+  /** 界面主题：深色（默认）/ 浅色 / 跟随系统 */
+  theme: ThemeMode
   /** 渲染数学公式（KaTeX），默认关；关/错=静默当源码 */
   renderMath: boolean
   /** 渲染 Mermaid 图表，默认关；关/错=围栏当普通代码块 */
@@ -38,6 +41,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   repo: '',
   autoSync: true,
   autoDownloadAssets: true,
+  theme: 'dark',
   renderMath: false,
   renderMermaid: false,
   betterHeadingExtract: true,

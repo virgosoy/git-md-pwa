@@ -210,7 +210,11 @@ describe('ReaderView renderMath（07a KaTeX）', () => {
     expect(root.querySelector('.katex-error')).toBeTruthy()
     // 验收「红色错误块」：baseNoteCss 必须给 .katex-error 上色（块公式 katex 自带 CSS 不给颜色）
     const cssTexts = [...root.querySelectorAll('style')].map((s) => s.textContent ?? '')
-    expect(cssTexts.some((t) => /\.katex-error\s*\{[^}]*color:\s*#cc0000/.test(t))).toBe(true)
+    expect(
+      cssTexts.some((t) =>
+        /\.katex-error\s*\{[^}]*color:\s*(var\(--error,\s*#cc0000\)|#cc0000)/.test(t)
+      )
+    ).toBe(true)
   })
 
   it('开但正文无 $/反斜杠：跳过 katex 加载（无 katex style），仍正常渲染', async () => {
