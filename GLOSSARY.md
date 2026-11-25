@@ -45,7 +45,7 @@ _Avoid_: 全文搜索（在指称本应用功能时，现已含正文命中）
 _Avoid_: 暗黑模式、夜间模式（在指称本应用设置时）
 
 **状态栏**：
-iPhone 屏幕最顶部的细条，显示时间、电量与信号；由 iOS 绘制，不属于网页内容。主屏幕 App 的栏内文字颜色由 `apple-mobile-web-app-status-bar-style` 决定；本应用用 `black-translucent`（白字、页面延伸到栏下），浅色主题下靠顶部深色带（`--status-bar-bg`）保证白字可读。
+iPhone 屏幕最顶部的细条，显示时间、电量与信号；由 iOS 绘制，不属于网页内容。主屏幕 App 的栏内文字颜色由 `apple-mobile-web-app-status-bar-style` 决定；本应用用 `black-translucent`（白字、页面延伸到栏下），浅色主题下靠顶部深色带（`--status-bar-bg`）保证白字可读。决策见 `docs/adr/0004-status-bar-style-for-light-theme.md`。
 _Avoid_: 顶栏（那是指应用自己的头部按钮区）
 
 **离线查看**：
