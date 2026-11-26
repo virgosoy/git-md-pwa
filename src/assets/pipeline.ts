@@ -2,6 +2,7 @@
 // 缓存命中零网络；未缓存则拉字节、超 10MB 标占位不入缓存、否则编码入缓存。
 
 import type { GithubClient, Repository } from '../github/client'
+import { bytesToBase64 } from '../lib/base64'
 import { loadAsset, saveAsset } from './store'
 
 /** 单资源缓存上限（>10MB 跳过并标占位） */
@@ -23,12 +24,7 @@ export function mimeFromPath(path: string): string {
 }
 
 export function bytesToDataUrl(bytes: Uint8Array, mime: string): string {
-  let bin = ''
-  const CHUNK = 0x8000
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
-  }
-  return `data:${mime};base64,${btoa(bin)}`
+  return `data:${mime};base64,${bytesToBase64(bytes)}`
 }
 
 /**

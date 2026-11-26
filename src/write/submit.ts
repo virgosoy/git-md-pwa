@@ -3,30 +3,12 @@
 
 import { GithubError } from '../github/client'
 import type { GithubClient, PutFileResult, Repository } from '../github/client'
+import { withTimeoutReject } from '../lib/async'
 
 export const SAVE_TIMEOUT_MS = 30_000
 
 export function buildCommitMessage(path: string): string {
   return `手机编辑：${path}`
-}
-
-/** 超时抛网络错误；其它 rejection 原样透传（不能把 403/409 吞成超时）。 */
-function withSaveTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      reject(new GithubError('请求超时', 'network'))
-    }, ms)
-    p.then(
-      (v) => {
-        window.clearTimeout(timer)
-        resolve(v)
-      },
-      (err) => {
-        window.clearTimeout(timer)
-        reject(err)
-      }
-    )
-  })
 }
 
 export interface SubmitNoteInput {
@@ -43,12 +25,13 @@ export async function submitNote(
   repo: Repository,
   input: SubmitNoteInput
 ): Promise<PutFileResult> {
-  return withSaveTimeout(
+  return withTimeoutReject(
     client.putFile(repo, input.path, {
       content: input.content,
       sha: input.sha,
       message: buildCommitMessage(input.path)
     }),
-    SAVE_TIMEOUT_MS
+    SAVE_TIMEOUT_MS,
+    () => new GithubError('请求超时', 'network')
   )
 }

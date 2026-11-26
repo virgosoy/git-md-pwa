@@ -24,7 +24,7 @@ describe('提交编排', () => {
   })
 
   it('把正文、sha 与提交说明传给客户端，并返回新 sha', async () => {
-    const putFile = vi.fn(async () => ({ sha: 'new', commitSha: 'c1' }))
+    const putFile = vi.fn(async () => ({ sha: 'new' }))
     const client = fakeClient(putFile)
 
     const result = await submitNote(client, repo, {
@@ -33,7 +33,7 @@ describe('提交编排', () => {
       sha: 'old'
     })
 
-    expect(result).toEqual({ sha: 'new', commitSha: 'c1' })
+    expect(result).toEqual({ sha: 'new' })
     expect(putFile).toHaveBeenCalledWith(repo, 'a.md', {
       content: '# hi\n',
       sha: 'old',

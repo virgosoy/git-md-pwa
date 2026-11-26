@@ -256,6 +256,61 @@ describe('26 · 回写（App 集成）', () => {
     expect(await loadDraft('a.md')).toBeUndefined()
   })
 
+  it('冲突重入后无法形成新冲突：面板关闭，编辑器恢复可用（不卡 busy）', async () => {
+    await configure()
+    let puts = 0
+    let gets = 0
+    vi.stubGlobal('fetch', async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        puts++
+        return new Response(JSON.stringify({ message: 'sha does not match' }), {
+          status: 409,
+          statusText: 'Conflict'
+        })
+      }
+      gets++
+      if (gets === 1) {
+        return new Response(
+          JSON.stringify({
+            sha: 'b9',
+            content: 'IyDov5znq68K',
+            encoding: 'base64',
+            size: 9
+          }),
+          { status: 200, statusText: 'OK' }
+        )
+      }
+      // 第二次 GET 拿回基准 sha：说明 409 不是真冲突
+      return new Response(
+        JSON.stringify({
+          sha: 'sha-a.md',
+          content: 'IyDov5znq68K',
+          encoding: 'base64',
+          size: 9
+        }),
+        { status: 200, statusText: 'OK' }
+      )
+    })
+    render(<App />, c)
+
+    await openNote(c, 'a.md')
+    await waitFor(() => c.querySelector('button[aria-label="编辑笔记"]') != null)
+    ;(c.querySelector('button[aria-label="编辑笔记"]') as HTMLButtonElement).click()
+    await waitFor(() => c.querySelector('.editor__text') != null)
+    await typeInEditor(c, '# 我的\n')
+
+    button(c, '保存').click()
+    await waitFor(
+      () => (c.querySelector('.conflict__title')?.textContent ?? '').includes('远端文件已更新')
+    )
+    button(c, '覆盖远端').click()
+
+    await waitFor(() => c.querySelector('.conflict') == null)
+    expect(c.querySelector('.editor__text')).not.toBeNull()
+    expect(button(c, '保存').disabled).toBe(false)
+    expect(puts).toBe(2)
+  })
+
   it('冲突放弃：确认后加载远端版本、删除草稿并退出编辑器', async () => {
     await configure()
     vi.stubGlobal('fetch', async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -392,6 +447,29 @@ describe('26 · 回写（App 集成）', () => {
     ta.dispatchEvent(new Event('input', { bubbles: true }))
     await new Promise((r) => setTimeout(r, 650))
     expect((await loadDraft('a.md'))?.content).toBe('# 又改\n')
+  })
+
+  it('pagehide 立即落草稿，不等 500ms 防抖', async () => {
+    await configure()
+    vi.stubGlobal('fetch', async () => {
+      throw new Error('unexpected network')
+    })
+    render(<App />, c)
+
+    await openNote(c, 'a.md')
+    await waitFor(() => c.querySelector('button[aria-label="编辑笔记"]') != null)
+    ;(c.querySelector('button[aria-label="编辑笔记"]') as HTMLButtonElement).click()
+    await waitFor(() => c.querySelector('.editor__text') != null)
+
+    const ta = c.querySelector('.editor__text') as HTMLTextAreaElement
+    ta.value = '# 立即\n'
+    ta.dispatchEvent(new Event('input', { bubbles: true }))
+    // 等 Preact 把 state 落进 editorRef，但远不到 500ms 防抖
+    await new Promise((r) => setTimeout(r, 0))
+    window.dispatchEvent(new Event('pagehide'))
+    await new Promise((r) => setTimeout(r, 100))
+
+    expect((await loadDraft('a.md'))?.content).toBe('# 立即\n')
   })
 
   it('草稿自动保存；重开 App 后阅读器出现「未提交草稿」横幅并可继续编辑', async () => {

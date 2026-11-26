@@ -31,6 +31,7 @@ import { loadReading, listRecent, recordOpen, saveScroll } from './reader/readin
 import type { ReadingRecord } from './reader/reading'
 import { ReaderView } from './reader/ReaderView'
 import { createGithubClient } from './github/client'
+import type { GithubClient, Repository } from './github/client'
 import { loadMirrorMeta } from './mirror/store'
 import { runSync } from './sync/sync'
 import type { SyncFailKind } from './sync/sync'
@@ -70,8 +71,8 @@ interface ConflictState {
 }
 
 interface WriteTarget {
-  client: ReturnType<typeof createGithubClient>
-  repo: { owner: string; repo: string }
+  client: GithubClient
+  repo: Repository
 }
 
 /** 滚动位置写入的 trailing debounce，避免每个滚动 tick 都写 IDB */
@@ -100,6 +101,8 @@ export function App() {
   const [conflict, setConflict] = useState<ConflictState | null>(null)
   const draftTimer = useRef<number | null>(null)
   const readerScrollRef = useRef(0)
+  const editorRef = useRef<EditorState | null>(null)
+  editorRef.current = editor
   // 同步守卫：状态更新是异步的，双击可能在重渲染前再次进入提交
   const savingRef = useRef(false)
   const conflictBusyRef = useRef(false)
@@ -124,6 +127,28 @@ export function App() {
       mainRef.current.scrollTop = homeScrollTop.current
     }
   }, [current])
+
+  // 26 · 切后台/页面关闭前立即落草稿：500ms 防抖窗口内也可能被 iOS 挂起
+  useEffect(() => {
+    function flushDraftNow(): void {
+      const ed = editorRef.current
+      if (!ed) return
+      if (draftTimer.current != null) {
+        window.clearTimeout(draftTimer.current)
+        draftTimer.current = null
+      }
+      void persistDraft(ed).catch(() => {})
+    }
+    function onVisibility(): void {
+      if (document.visibilityState === 'hidden') flushDraftNow()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('pagehide', flushDraftNow)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pagehide', flushDraftNow)
+    }
+  }, [])
 
   // 同步状态（票 04）
   const settingsRef = useRef<AppSettings | null>(null)
@@ -509,29 +534,30 @@ export function App() {
     setNotice('草稿已丢弃')
   }
 
+  /** 提交/加载远端成功后：回填本地镜像与当前阅读内容；镜像写失败交给下次同步校准。 */
+  async function storeLocalVersion(
+    path: string,
+    content: string,
+    sha: string
+  ): Promise<void> {
+    const size = new TextEncoder().encode(content).byteLength
+    try {
+      await upsertFile({ path, sha, content, size, status: 'ok' })
+    } catch {
+      // 镜像回填失败不阻断提交结果；下次同步按 sha 校准
+    }
+    setCurrent((c) => (c && c.path === path ? { ...c, content, sha } : c))
+  }
+
   async function afterSaved(
     ed: EditorState,
     newSha: string,
     contentWithEol: string
   ): Promise<void> {
-    const size = new TextEncoder().encode(contentWithEol).byteLength
     // 提交已经成功：先清草稿，避免本地写库失败导致重复提交
     await deleteDraft(ed.path).catch(() => {})
-    try {
-      await upsertFile({
-        path: ed.path,
-        sha: newSha,
-        content: contentWithEol,
-        size,
-        status: 'ok'
-      })
-    } catch {
-      // 镜像回填失败不阻断提交结果；下次同步按 sha 校准
-    }
+    await storeLocalVersion(ed.path, contentWithEol, newSha)
     setEditor({ ...ed, baseContent: toLf(ed.content), baseSha: newSha })
-    setCurrent((c) =>
-      c && c.path === ed.path ? { ...c, content: contentWithEol, sha: newSha } : c
-    )
     setConflict(null)
     await refreshFiles()
     await refreshDraftPaths()
@@ -539,7 +565,7 @@ export function App() {
     setNotice('已提交')
   }
 
-  async function loadConflict(
+  async function resolveWriteConflict(
     ed: EditorState,
     target: WriteTarget,
     fallbackMessage: string
@@ -548,6 +574,7 @@ export function App() {
       const remote = await target.client.getFileContent(target.repo, ed.path)
       if (remote.sha === ed.baseSha) {
         // PUT 报 409/422 但远端 sha 没变：多半是校验错误而非冲突
+        setConflict(null)
         setNotice(fallbackMessage)
         return
       }
@@ -562,6 +589,7 @@ export function App() {
       if (classifyWriteError(err).kind === 'not-found') {
         setConflict({ kind: 'deleted', busy: false, error: null })
       } else {
+        setConflict(null)
         setNotice('远端版本读取失败，草稿已保留；请稍后再试')
       }
     }
@@ -590,7 +618,7 @@ export function App() {
     } catch (err) {
       const failure = classifyWriteError(err)
       if (failure.kind === 'conflict') {
-        await loadConflict(ed, target, err instanceof Error ? err.message : failure.message)
+        await resolveWriteConflict(ed, target, err instanceof Error ? err.message : failure.message)
       } else if (failure.kind === 'network') {
         setNotice('已存草稿，联网后再保存')
         void refreshDraftPaths()
@@ -623,7 +651,7 @@ export function App() {
     } catch (err) {
       const failure = classifyWriteError(err)
       if (failure.kind === 'conflict') {
-        await loadConflict(ed, target, err instanceof Error ? err.message : failure.message)
+        await resolveWriteConflict(ed, target, err instanceof Error ? err.message : failure.message)
       } else {
         setConflict({ ...c, busy: false, error: failure.message })
       }
@@ -641,29 +669,13 @@ export function App() {
       if (c.kind === 'changed' && c.remoteSha && c.remoteContent != null) {
         const remoteSha = c.remoteSha
         const remoteContent = c.remoteContent
-        const size = new TextEncoder().encode(remoteContent).byteLength
         try {
           await deleteDraft(ed.path)
         } catch {
           setConflict({ ...c, busy: false, error: '加载远端版本失败，请重试' })
           return
         }
-        try {
-          await upsertFile({
-            path: ed.path,
-            sha: remoteSha,
-            content: remoteContent,
-            size,
-            status: 'ok'
-          })
-        } catch {
-          // 镜像回填失败不阻断；下次同步校准
-        }
-        setCurrent((cur) =>
-          cur && cur.path === ed.path
-            ? { ...cur, content: remoteContent, sha: remoteSha }
-            : cur
-        )
+        await storeLocalVersion(ed.path, remoteContent, remoteSha)
         setEditor(null)
         setConflict(null)
         setCurrentDraft(null)

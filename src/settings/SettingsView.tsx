@@ -73,7 +73,7 @@ export function SettingsView({
       <h2 class="settings__title">设置</h2>
 
       <label class="field">
-        <span class="field__label">细粒度令牌（PAT）</span>
+        <span class="field__label">细粒度令牌（只读 / 读写）</span>
         <input
           class="field__input"
           type="password"

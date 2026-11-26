@@ -28,7 +28,10 @@ export function classifyWriteError(err: unknown): WriteFailure {
       case 'network':
         return { kind: 'network', message: '网络错误或请求超时' }
       case 401:
-        return { kind: 'auth', message: '令牌无效或已过期，请到设置更新令牌' }
+        return {
+          kind: 'auth',
+          message: `令牌无效或已过期：${err.details ?? err.message}。请到设置更新令牌`
+        }
       case 403:
         return {
           kind: 'forbidden',

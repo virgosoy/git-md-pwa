@@ -27,7 +27,7 @@ Type: task
 
 ### 编辑器
 
-- 全屏编辑器（App 内状态路由，不改 URL）：源文 textarea + 「编辑 / 预览」切换 + 顶栏返回 / 保存 / 丢弃草稿。
+- 全屏编辑器（App 内状态路由，不改 URL）：App 顶栏返回 / 保存；编辑器顶栏「编辑 / 预览」切换 + 丢弃草稿（二次确认）。
 - 预览复用 `renderNote`；图片/附件沿用 `autoDownloadAssets` 规则。
 - 输入防抖（约 500ms）自动写草稿；App 被杀/切后台不丢。内容与进入编辑时的正文一致时删除草稿。
 - 返回：不弹确认，直接退出；草稿保留。返回阅读器时恢复进入编辑前的阅读位置。
@@ -157,3 +157,12 @@ Type: task
 - App 接线：设置「回写」开关（默认关）、阅读器 ✏️、全屏编辑器 + 预览、草稿横幅/列表标记、保存/冲突/放弃/重新创建、返回恢复阅读位置。
 - 测试：新增 10 个 App 集成用例（开关关、保存成功、409 覆盖、远端删除重建、冲突放弃、403、断网、>1MB、草稿改回不落盘、重开 App 草稿横幅）；`npm test` 382/382 绿，`typecheck` ✓，`verify:pwa` ✓（v0.0.7+ea37dd2）。
 - 真机验收清单：保存产生 `手机编辑：<path>` 提交；断网/杀 App 草稿还在；网页改同一文件触发冲突并预览/覆盖/放弃；CRLF 文件只改一行时 diff 只显示该行；键盘弹出时编辑区可滚动、保存可达。
+
+2026-11-26 code review 修复：
+
+- 草稿落盘：新增 `editorRef` + `visibilitychange`/`pagehide` 立即 flush，不再只靠 500ms 防抖；新增 pagehide 回归测试。
+- 冲突重入：`resolveWriteConflict` 在远端 sha 未变 / 读取失败时关闭面板并提示，避免 `busy` 卡死；新增回归测试。
+- 令牌 label 改为「细粒度令牌（只读 / 读写）」；401 提示保留 GitHub 原始 message。
+- 丢弃草稿位置：保留在编辑器顶栏（App 顶栏只有返回/保存），本票文案已对齐。
+- 规范清理：`withTimeoutReject` 移入 `src/lib/async.ts`；`bytesToDataUrl` 复用 lib base64；`WriteTarget` 复用 `GithubClient`/`Repository`；`PutFileResult` 去掉未使用的 `commitSha`；ConflictPanel 的 kind 文案收成映射。
+- 全量 384/384 绿，typecheck ✓，verify:pwa ✓（构建串仍为 v0.0.7+62f4f0b，因为修复尚未提交）。

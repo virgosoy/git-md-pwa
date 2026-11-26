@@ -9,6 +9,11 @@ describe('写错误分类', () => {
       message: '网络错误或请求超时'
     })
     expect(classifyWriteError(new GithubError('bad', 401)).kind).toBe('auth')
+    expect(
+      classifyWriteError(
+        new GithubError('GitHub 401：Bad credentials', 401, 'Bad credentials')
+      ).message
+    ).toContain('Bad credentials')
     expect(classifyWriteError(new GithubError('nope', 403))).toEqual({
       kind: 'forbidden',
       message: '当前令牌没有写权限，请到设置换成 Contents: Read and write 的令牌'

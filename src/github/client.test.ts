@@ -158,7 +158,7 @@ describe('GithubClient 回写', () => {
       message: '手机编辑：a.md'
     })
 
-    expect(result).toEqual({ sha: 'new', commitSha: 'c1' })
+    expect(result).toEqual({ sha: 'new' })
     expect(log.urls[0]).toBe(
       'https://api.github.com/repos/me/fixtures/contents/a.md'
     )

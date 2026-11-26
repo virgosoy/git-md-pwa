@@ -40,8 +40,6 @@ export interface PutFileInput {
 export interface PutFileResult {
   /** 新文件的 blob sha（用于回填本地镜像） */
   sha: string
-  /** 新提交的 commit sha（当前不持久化） */
-  commitSha: string
 }
 
 export class GithubError extends Error {
@@ -180,14 +178,11 @@ export function createGithubClient(
         body: JSON.stringify(body),
         contentType: 'application/json'
       })
-      const json = (await res.json()) as {
-        content?: { sha?: string }
-        commit?: { sha?: string }
-      }
-      if (!json.content?.sha || !json.commit?.sha) {
+      const json = (await res.json()) as { content?: { sha?: string } }
+      if (!json.content?.sha) {
         throw new GithubError('GitHub 提交响应缺少 sha', 0)
       }
-      return { sha: json.content.sha, commitSha: json.commit.sha }
+      return { sha: json.content.sha }
     }
   }
 }

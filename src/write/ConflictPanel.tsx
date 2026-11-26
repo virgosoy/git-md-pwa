@@ -14,6 +14,20 @@ export interface ConflictPanelProps {
   onCancel: () => void
 }
 
+/** 两种冲突的文案集中一处，避免同一 kind 的四段条件分支散落。 */
+const KIND_TEXT = {
+  changed: {
+    title: '远端文件已更新',
+    hint: '你开始编辑后，仓库里的这个文件已经变了。保存被拒绝，请选择使用哪一边。',
+    overwrite: '覆盖远端'
+  },
+  deleted: {
+    title: '远端文件已被删除',
+    hint: '你开始编辑后，仓库里的这个文件已被删除。可以按你的草稿重新创建，或放弃草稿。',
+    overwrite: '在远端重新创建'
+  }
+} as const
+
 export function ConflictPanel({
   kind,
   remoteContent,
@@ -24,18 +38,13 @@ export function ConflictPanel({
   onCancel
 }: ConflictPanelProps) {
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const text = KIND_TEXT[kind]
 
   return (
     <div class="conflict" role="dialog" aria-modal="true" aria-label="回写冲突">
       <div class="conflict__box">
-        <h2 class="conflict__title">
-          {kind === 'changed' ? '远端文件已更新' : '远端文件已被删除'}
-        </h2>
-        <p class="conflict__hint">
-          {kind === 'changed'
-            ? '你开始编辑后，仓库里的这个文件已经变了。保存被拒绝，请选择使用哪一边。'
-            : '你开始编辑后，仓库里的这个文件已被删除。可以按你的草稿重新创建，或放弃草稿。'}
-        </p>
+        <h2 class="conflict__title">{text.title}</h2>
+        <p class="conflict__hint">{text.hint}</p>
 
         {kind === 'changed' && (
           <pre class="conflict__remote" aria-label="远端版本预览">
@@ -73,7 +82,7 @@ export function ConflictPanel({
               disabled={busy}
               onClick={onOverwrite}
             >
-              {busy ? '处理中…' : kind === 'changed' ? '覆盖远端' : '在远端重新创建'}
+              {busy ? '处理中…' : text.overwrite}
             </button>
             <button
               type="button"

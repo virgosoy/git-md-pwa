@@ -16,3 +16,28 @@ export function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<
     )
   })
 }
+
+/**
+ * 超时 reject；其它 rejection 原样透传。
+ * 用于写操作：失败必须让调用方看见（403/409 不能被吞成超时），
+ * 与 withTimeout 的「失败也要有值」语义相反。
+ */
+export function withTimeoutReject<T>(
+  p: Promise<T>,
+  ms: number,
+  onTimeout: () => Error
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(onTimeout()), ms)
+    p.then(
+      (v) => {
+        window.clearTimeout(timer)
+        resolve(v)
+      },
+      (err) => {
+        window.clearTimeout(timer)
+        reject(err)
+      }
+    )
+  })
+}
