@@ -138,3 +138,12 @@ Type: task
 - 兼容基线：iOS 16.1.1 Safari 主屏；不使用 Safari 17+ API。
 
 ## Comments
+
+2026-11-27 实施完成（代码 + 自动化测试全绿），**待 iPhone 真机验收**。
+
+- 新增 `src/write/newNote.ts`（文件名规范化/补 `.md`、目录推导、路径拼接、`手机新建：<path>`）、`src/write/NewNotePanel.tsx`、`submit.createNote`（省略 `sha`，30s 超时）。
+- App：首页 ＋ 仅 `writeUi`（回写开 + 令牌非空）露出；弹层目录来自当前 `files`；创建成功 `upsertFile` → `refreshFiles` → 清搜索词 → 直接进编辑器（`baseSha`=新 sha，`baseContent`=`''`，`eol`=lf），不整树同步、不改 mirror meta。
+- 错误：本地同名不发请求；409/422 GET 确认远端同名；403/401/网络文案按票；失败保留弹层与输入、不落草稿；成功后才关闭弹层。
+- 测试：`newNote` 12 个纯函数用例 + `submit` 新建 2 个 + `app.new-note` 12 个 App 集成（门控、目录、创建成功/导航、清搜索、本地/远端重名、401/403、断网、连点一次 PUT、错误提示随输入清除）；全量 410/410 绿，typecheck ✓，verify:pwa ✓（v0.0.8+981cd52）。
+- 文档：ADR-0005、spec、draft、GLOSSARY、README、CLAUDE 同步；`package.json` 0.0.8。
+- 真机验收清单：＋ → 选目录 + 中文名 → 创建 → GitHub 出现 `手机新建：<path>` 空文件提交 → 编辑器；写正文保存出现 `手机编辑：<path>`；本地/远端重名提示且不覆盖；离线提示且输入不丢；键盘弹出时字段可滚动、创建可达；返回阅读器与首页后列表/最近/搜索都能找到。

@@ -6,8 +6,10 @@ import { getFile, loadFiles, upsertFile } from './mirror/store'
 import type { StoredFile } from './mirror/store'
 import { EditorView } from './editor/EditorView'
 import { ConflictPanel } from './write/ConflictPanel'
+import { NewNotePanel } from './write/NewNotePanel'
 import { classifyWriteError } from './write/errors'
-import { submitNote } from './write/submit'
+import { createNote, submitNote } from './write/submit'
+import { deriveDirectories, joinNotePath, normalizeFileName } from './write/newNote'
 import { applyEol, detectEol, stripBom, toLf } from './lib/eol'
 import type { Eol } from './lib/eol'
 import {
@@ -84,6 +86,14 @@ const NOTICE_AUTO_DISMISS_MS = 4000
 /** 「全下」逐项回填的防抖间隔（票 24：多个资源同时落地只重建一次 shadow） */
 const ASSET_REFRESH_DEBOUNCE_MS = 300
 
+/** 新建失败文案：403/网络用固定提示，401 与其它沿用分类后的 message。 */
+function createFailureMessage(err: unknown): string {
+  const failure = classifyWriteError(err)
+  if (failure.kind === 'forbidden' || failure.kind === 'auth') return failure.message
+  if (failure.kind === 'network') return '新建失败，需要联网后再试'
+  return err instanceof Error && err.message ? err.message : '新建失败，请稍后再试'
+}
+
 export function App() {
   const updates = useUpdate()
   const [settings, setSettings] = useState<AppSettings | null>(null)
@@ -99,6 +109,10 @@ export function App() {
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [saving, setSaving] = useState(false)
   const [conflict, setConflict] = useState<ConflictState | null>(null)
+  // 27 · 新建笔记弹层（入口只在本页顶栏；失败保留弹层与输入）
+  const [newNoteOpen, setNewNoteOpen] = useState(false)
+  const [newNoteBusy, setNewNoteBusy] = useState(false)
+  const [newNoteError, setNewNoteError] = useState<string | null>(null)
   const draftTimer = useRef<number | null>(null)
   const readerScrollRef = useRef(0)
   const editorRef = useRef<EditorState | null>(null)
@@ -106,6 +120,9 @@ export function App() {
   // 同步守卫：状态更新是异步的，双击可能在重渲染前再次进入提交
   const savingRef = useRef(false)
   const conflictBusyRef = useRef(false)
+  // 新建的防重入守卫与「本次会话记住上次目录」（不写入设置）
+  const newNoteBusyRef = useRef(false)
+  const lastNewNoteDir = useRef('/')
   const scrollTimer = useRef<number | undefined>(undefined)
   const mainRef = useRef<HTMLElement>(null)
   // 主页搜索的滚动位置管理（列表与结果共用 .app__main 这一个滚动容器）：
@@ -160,6 +177,8 @@ export function App() {
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null)
   const [files, setFiles] = useState<StoredFile[]>([])
   const [query, setQuery] = useState('')
+  // 新建弹层的目录只从既有镜像推导（根目录固定首项）
+  const newNoteDirs = useMemo(() => deriveDirectories(files), [files])
 
   // 标题+正文索引：内容或标题抽取模式（票 15 开关）变化才重算（591 篇×正文解析，不同步不重复跑）
   const index = useMemo(
@@ -440,6 +459,95 @@ export function App() {
     return {
       client: createGithubClient(settings.token),
       repo: { owner: settings.owner, repo: settings.repo }
+    }
+  }
+
+  // ── 27 · 新建笔记 ─────────────────────────────────────────────────────
+
+  function openNewNote(): void {
+    setNewNoteError(null)
+    setNewNoteOpen(true)
+  }
+
+  function closeNewNote(): void {
+    if (newNoteBusyRef.current) return
+    setNewNoteOpen(false)
+    setNewNoteError(null)
+  }
+
+  /** 创建成功后：回填镜像、刷新列表、清搜索词，然后直接进编辑器（不整树同步）。 */
+  async function afterCreated(path: string, sha: string): Promise<void> {
+    try {
+      await upsertFile({ path, sha, content: '', size: 0, status: 'ok' })
+    } catch {
+      // 本地回填失败不阻断创建结果；下次同步按 sha 校准
+    }
+    // 与 openNote 一致：离开首页时记住列表滚动位置
+    homeScrollTop.current = mainRef.current?.scrollTop ?? 0
+    setNewNoteOpen(false)
+    setNewNoteError(null)
+    setQuery('')
+    setNotice(null)
+    setFindOpen(false)
+    setCurrent({ path, content: '', scrollTop: 0, sha })
+    setEditor({ path, content: '', baseContent: '', baseSha: sha, eol: 'lf' })
+    // 最近打开/列表/草稿状态都属于本地附属信息：失败不影响已创建的结果
+    await Promise.all([
+      refreshFiles(),
+      recordOpen(path).then(refreshRecent).catch(() => {}),
+      refreshCurrentDraft(path)
+    ])
+  }
+
+  async function handleCreateNote(dir: string, rawName: string): Promise<void> {
+    if (newNoteBusyRef.current) return
+    const normalized = normalizeFileName(rawName)
+    if (normalized.error != null || normalized.name === '') {
+      setNewNoteError(normalized.error ?? '请填写文件名')
+      return
+    }
+    const path = joinNotePath(dir, normalized.name)
+    newNoteBusyRef.current = true
+    setNewNoteBusy(true)
+    setNewNoteError(null)
+    try {
+      // 本地镜像已有同 path：不发请求
+      let existing: StoredFile | undefined
+      try {
+        existing = await getFile(path)
+      } catch {
+        setNewNoteError('读取本机镜像失败，请稍后再试')
+        return
+      }
+      if (existing) {
+        setNewNoteError('已存在同名笔记')
+        return
+      }
+      const target = currentWriteTarget()
+      if (!target) {
+        setNewNoteError('请先在设置里填写令牌与仓库')
+        return
+      }
+      lastNewNoteDir.current = dir
+      try {
+        const result = await createNote(target.client, target.repo, path)
+        await afterCreated(path, result.sha)
+      } catch (err) {
+        // 409/422：GET 确认远端是否已存在；存在则按重名提示，不覆盖、不自动改名
+        if (classifyWriteError(err).kind === 'conflict') {
+          try {
+            await target.client.getFileContent(target.repo, path)
+            setNewNoteError('已存在同名笔记')
+          } catch {
+            setNewNoteError(createFailureMessage(err))
+          }
+          return
+        }
+        setNewNoteError(createFailureMessage(err))
+      }
+    } finally {
+      newNoteBusyRef.current = false
+      setNewNoteBusy(false)
     }
   }
 
@@ -796,6 +904,11 @@ export function App() {
           <>
             <h1 class="app__title">MD 镜像</h1>
             <div class="app__actions">
+              {writeUi && (
+                <button class="btn" aria-label="新建笔记" onClick={openNewNote}>
+                  ＋
+                </button>
+              )}
               <button class="btn" onClick={() => void doSync(true)}>
                 刷新
               </button>
@@ -954,6 +1067,21 @@ export function App() {
           onOverwrite={() => void overwriteConflict()}
           onDiscard={() => void discardConflict()}
           onCancel={() => setConflict(null)}
+        />
+      )}
+
+      {newNoteOpen && (
+        <NewNotePanel
+          directories={newNoteDirs}
+          initialDir={lastNewNoteDir.current}
+          busy={newNoteBusy}
+          error={newNoteError}
+          onDirChange={(dir) => {
+            lastNewNoteDir.current = dir
+          }}
+          onFieldChange={() => setNewNoteError(null)}
+          onCancel={closeNewNote}
+          onCreate={(dir, rawName) => void handleCreateNote(dir, rawName)}
         />
       )}
 
