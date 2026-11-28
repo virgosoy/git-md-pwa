@@ -68,6 +68,27 @@ function chooseDir(c: HTMLElement, dir: string): void {
   select.dispatchEvent(new Event('change', { bubbles: true }))
 }
 
+async function openNewDirMode(c: HTMLElement): Promise<void> {
+  button(c, '＋ 新建目录').click()
+  await waitFor(() => c.querySelector('.new-note__dir-input') != null)
+}
+
+async function fillInput(
+  c: HTMLElement,
+  selector: string,
+  value: string
+): Promise<void> {
+  const input = c.querySelector(selector) as HTMLInputElement
+  input.value = value
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  await waitFor(() => input.value === value)
+}
+
+async function fillNewDirName(c: HTMLElement, value: string): Promise<void> {
+  await fillInput(c, '.new-note__name-input', value)
+  await waitFor(() => !button(c, '创建目录并新建笔记').disabled)
+}
+
 describe('27 · 新建笔记（App 集成）', () => {
   let c: HTMLElement
 
@@ -84,12 +105,17 @@ describe('27 · 新建笔记（App 集成）', () => {
 
   async function configure(
     files: StoredFile[] = [],
-    opts: { writeBackEnabled?: boolean; token?: string } = {}
+    opts: {
+      writeBackEnabled?: boolean
+      token?: string
+      owner?: string
+      repo?: string
+    } = {}
   ): Promise<void> {
     await saveSettings({
       token: opts.token ?? 'ghp_test_dummy',
-      owner: 'me',
-      repo: 'fixtures',
+      owner: opts.owner ?? 'me',
+      repo: opts.repo ?? 'fixtures',
       autoSync: false,
       writeBackEnabled: opts.writeBackEnabled ?? true,
       autoDownloadAssets: false
@@ -110,6 +136,15 @@ describe('27 · 新建笔记（App 集成）', () => {
     render(<App />, c)
 
     await waitFor(() => noteButton(c, 'a.md') != null)
+    expect(c.querySelector('button[aria-label="新建笔记"]')).toBeNull()
+  })
+
+  it('缺 owner/repo：首页没有「＋」（门控与 currentWriteTarget 一致）', async () => {
+    await configure([file('a.md', '# 甲\n')], { owner: '' })
+    render(<App />, c)
+
+    // 未配置仓库时首页显示设置页；等设置加载完成再断言，避免初始 null 的假阴性
+    await waitFor(() => c.querySelector('.settings') != null)
     expect(c.querySelector('button[aria-label="新建笔记"]')).toBeNull()
   })
 
@@ -196,6 +231,147 @@ describe('27 · 新建笔记（App 集成）', () => {
     )
     expect(putBody(log[0]).message).toBe('手机新建：notes/新篇.md')
     expect(await getFile('notes/新篇.md')).toMatchObject({ sha: 'newsha', content: '' })
+  })
+
+  it('新建多级目录：一次 PUT 创建 父/新目录/首篇.md，中间层无直接文件也进入目录下拉', async () => {
+    await configure([file('notes/b.md', '# 乙\n')])
+    const log: Logged[] = []
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      record(log, input, init)
+      return new Response(CREATE_OK, { status: 201, statusText: 'Created' })
+    })
+    render(<App />, c)
+
+    await waitFor(() => noteButton(c, 'notes/b.md') != null)
+    await openPanel(c)
+    chooseDir(c, 'notes')
+    await openNewDirMode(c)
+    await fillInput(c, '.new-note__dir-input', ' a /b ')
+    await fillNewDirName(c, '首篇')
+    await waitFor(() => (c.textContent ?? '').includes('将创建：notes/a/b/首篇.md'))
+    button(c, '创建目录并新建笔记').click()
+
+    await waitFor(() => c.querySelector('.editor__text') != null)
+    expect(log).toHaveLength(1)
+    expect(log[0].url).toBe(
+      'https://api.github.com/repos/me/fixtures/contents/notes/a/b/%E9%A6%96%E7%AF%87.md'
+    )
+    expect(putBody(log[0])).toEqual({
+      message: '手机新建：notes/a/b/首篇.md',
+      content: ''
+    })
+    expect(await getFile('notes/a/b/首篇.md')).toMatchObject({
+      sha: 'newsha',
+      content: ''
+    })
+
+    // 返回首页：列表按顶层目录分组并显示完整路径；再开弹层，所有祖先目录都可选
+    button(c, '‹ 返回').click()
+    await waitFor(() => c.querySelector('.reader') != null)
+    button(c, '‹ 返回').click()
+    await waitFor(() => noteButton(c, 'notes/a/b/首篇.md') != null)
+    await openPanel(c)
+    const select = c.querySelector('.new-note__select') as HTMLSelectElement
+    expect([...select.options].map((o) => o.value)).toEqual([
+      '/',
+      'notes',
+      'notes/a',
+      'notes/a/b'
+    ])
+  })
+
+  it('根目录下新建多级目录：path 不带前导 /', async () => {
+    await configure([file('a.md', '# 甲\n')])
+    const log: Logged[] = []
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      record(log, input, init)
+      return new Response(CREATE_OK, { status: 201, statusText: 'Created' })
+    })
+    render(<App />, c)
+
+    await waitFor(() => noteButton(c, 'a.md') != null)
+    await openPanel(c)
+    await openNewDirMode(c)
+    await fillInput(c, '.new-note__dir-input', 'a/b')
+    await fillNewDirName(c, '首篇')
+    button(c, '创建目录并新建笔记').click()
+
+    await waitFor(() => c.querySelector('.editor__text') != null)
+    expect(log[0].url).toBe(
+      'https://api.github.com/repos/me/fixtures/contents/a/b/%E9%A6%96%E7%AF%87.md'
+    )
+    expect(putBody(log[0]).message).toBe('手机新建：a/b/首篇.md')
+    expect(await getFile('a/b/首篇.md')).toMatchObject({ sha: 'newsha', content: '' })
+  })
+
+  it('新目录已存在：提示后继续在该目录新建笔记', async () => {
+    await configure([file('notes/sub/c.md', '# 丙\n')])
+    const log: Logged[] = []
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      record(log, input, init)
+      return new Response(CREATE_OK, { status: 201, statusText: 'Created' })
+    })
+    render(<App />, c)
+
+    await waitFor(() => noteButton(c, 'notes/sub/c.md') != null)
+    await openPanel(c)
+    chooseDir(c, 'notes')
+    await openNewDirMode(c)
+    await fillInput(c, '.new-note__dir-input', 'sub')
+    await fillNewDirName(c, '新篇')
+    await waitFor(() =>
+      (c.textContent ?? '').includes('目录已存在，将直接在该目录新建笔记')
+    )
+    button(c, '创建目录并新建笔记').click()
+
+    await waitFor(() => c.querySelector('.editor__text') != null)
+    expect(log[0].url).toBe(
+      'https://api.github.com/repos/me/fixtures/contents/notes/sub/%E6%96%B0%E7%AF%87.md'
+    )
+    expect(putBody(log[0]).message).toBe('手机新建：notes/sub/新篇.md')
+  })
+
+  it('非法新目录路径：创建禁用并提示；改成合法后恢复', async () => {
+    await configure([file('a.md', '# 甲\n')])
+    vi.stubGlobal('fetch', async () => {
+      throw new Error('unexpected network')
+    })
+    render(<App />, c)
+
+    await waitFor(() => noteButton(c, 'a.md') != null)
+    await openPanel(c)
+    await openNewDirMode(c)
+    await fillInput(c, '.new-note__dir-input', 'a//b')
+    await fillInput(c, '.new-note__name-input', '篇')
+
+    await waitFor(() => (c.textContent ?? '').includes('空目录名'))
+    expect(button(c, '创建目录并新建笔记').disabled).toBe(true)
+
+    await fillInput(c, '.new-note__dir-input', 'a/b')
+    await waitFor(() => !button(c, '创建目录并新建笔记').disabled)
+    expect((c.textContent ?? '').includes('空目录名')).toBe(false)
+  })
+
+  it('404：显示 GitHub 原始 message，弹层保留、镜像不变', async () => {
+    await configure([file('a.md', '# 甲\n')])
+    vi.stubGlobal('fetch', async () => {
+      return new Response(JSON.stringify({ message: 'Not Found' }), {
+        status: 404,
+        statusText: 'Not Found'
+      })
+    })
+    render(<App />, c)
+
+    await waitFor(() => noteButton(c, 'a.md') != null)
+    await openPanel(c)
+    await openNewDirMode(c)
+    await fillInput(c, '.new-note__dir-input', 'a/b')
+    await fillNewDirName(c, '首篇')
+    button(c, '创建目录并新建笔记').click()
+
+    await waitFor(() => (c.textContent ?? '').includes('Not Found'))
+    expect(c.querySelector('.new-note')).not.toBeNull()
+    expect(await getFile('a/b/首篇.md')).toBeUndefined()
   })
 
   it('创建成功后清空首页搜索词（返回列表不被旧查询过滤）', async () => {

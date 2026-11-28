@@ -7,9 +7,10 @@ import type { StoredFile } from './mirror/store'
 import { EditorView } from './editor/EditorView'
 import { ConflictPanel } from './write/ConflictPanel'
 import { NewNotePanel } from './write/NewNotePanel'
+import type { NewNoteInput } from './write/NewNotePanel'
 import { classifyWriteError } from './write/errors'
 import { createNote, submitNote } from './write/submit'
-import { deriveDirectories, joinNotePath, normalizeFileName } from './write/newNote'
+import { deriveDirectories, resolveNoteTarget } from './write/newNote'
 import { applyEol, detectEol, stripBom, toLf } from './lib/eol'
 import type { Eol } from './lib/eol'
 import {
@@ -499,14 +500,20 @@ export function App() {
     ])
   }
 
-  async function handleCreateNote(dir: string, rawName: string): Promise<void> {
+  async function handleCreateNote(input: NewNoteInput): Promise<void> {
     if (newNoteBusyRef.current) return
-    const normalized = normalizeFileName(rawName)
-    if (normalized.error != null || normalized.name === '') {
-      setNewNoteError(normalized.error ?? '请填写文件名')
+    // 与弹层预览共用同一个解析函数；新目录的中间层由同一个 commit 带出
+    // （Git 不存空目录，ADR-0005）。
+    const target = resolveNoteTarget(input.baseDir, input.rawDir, input.rawName)
+    if (target.error != null) {
+      setNewNoteError(target.error)
       return
     }
-    const path = joinNotePath(dir, normalized.name)
+    if (target.path === '') {
+      setNewNoteError('请填写文件名与新目录')
+      return
+    }
+    const path = target.path
     newNoteBusyRef.current = true
     setNewNoteBusy(true)
     setNewNoteError(null)
@@ -528,7 +535,9 @@ export function App() {
         setNewNoteError('请先在设置里填写令牌与仓库')
         return
       }
-      lastNewNoteDir.current = dir
+      // 只记住父目录：新建出的目录要等 refreshFiles 后才进入下拉，
+      // 若记成新目录，快速再开弹层时 select 会指向不存在的 option。
+      lastNewNoteDir.current = input.baseDir
       try {
         const result = await createNote(target.client, target.repo, path)
         await afterCreated(path, result.sha)
@@ -845,8 +854,13 @@ export function App() {
   const configured = settings != null && isConfigured(settings)
   const downloadingThisNote =
     downloadingAssets != null && current != null && downloadingAssets.path === current.path
-  // 回写开关 + 令牌齐全才露出编辑能力；>1MB 的笔记点 ✏️ 时提示只读
-  const writeUi = !!settings?.writeBackEnabled && (settings?.token.length ?? 0) > 0
+  // 回写开关 + 令牌 + owner/repo 齐全才露出编辑能力；与 currentWriteTarget() 同源，
+  // 缺仓库信息时不显示「＋」/✏️（否则点开才在弹层里报错）。>1MB 的笔记点 ✏️ 时提示只读
+  const writeUi =
+    !!settings?.writeBackEnabled &&
+    (settings?.token.length ?? 0) > 0 &&
+    !!settings?.owner &&
+    !!settings?.repo
   const canEditCurrent = writeUi && current != null
   const showDraftBanner = writeUi && current != null && currentDraft?.path === current.path
   const editorIsDirty = editor != null && editorDirty(editor)
@@ -1081,7 +1095,7 @@ export function App() {
           }}
           onFieldChange={() => setNewNoteError(null)}
           onCancel={closeNewNote}
-          onCreate={(dir, rawName) => void handleCreateNote(dir, rawName)}
+          onCreate={(input) => void handleCreateNote(input)}
         />
       )}
 

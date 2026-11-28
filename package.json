@@ -1,7 +1,7 @@
 {
   "name": "git-md-pwa",
   "private": true,
-  "version": "0.0.8",
+  "version": "0.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
