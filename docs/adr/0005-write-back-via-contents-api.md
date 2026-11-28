@@ -2,7 +2,7 @@
 
 Status: accepted
 
-主屏幕 PWA 在 iPhone 上没有可访问的本地工作区；应用现有的「仓库镜像」是离线副本，不是 Git 工作副本。第二版需要在手机上编辑现有 Markdown 或新建 Markdown 并写回私有仓库。决定：用 GitHub Contents API 的 `PUT /repos/{owner}/{repo}/contents/{path}` 直接提交单个文件；更新时携带上次同步得到的 blob SHA 作为乐观并发前置条件；每次保存产生一个提交，提交到默认分支，提交说明固定为 `手机编辑：<path>`；回写是设置项，默认关闭。单文件编辑上限 1 MB，更大的文件只读。新建文件复用同一端点：省略 `sha` 即创建，提交说明为 `手机新建：<path>`；目录只从既有镜像目录中选择，本期不新建目录。
+主屏幕 PWA 在 iPhone 上没有可访问的本地工作区；应用现有的「仓库镜像」是离线副本，不是 Git 工作副本。第二版需要在手机上编辑现有 Markdown 或新建 Markdown 并写回私有仓库。决定：用 GitHub Contents API 的 `PUT /repos/{owner}/{repo}/contents/{path}` 直接提交单个文件；更新时携带上次同步得到的 blob SHA 作为乐观并发前置条件；每次保存产生一个提交，提交到默认分支，提交说明固定为 `手机编辑：<path>`；回写是设置项，默认关闭。单文件编辑上限 1 MB，更大的文件只读。新建文件复用同一端点：省略 `sha` 即创建，提交说明为 `手机新建：<path>`；新建目录也在同一次提交中完成——目录用相对选中父目录的多级路径输入，随首篇空文件诞生，中间层可以没有直接文件；不支持没有任何文件的真空目录（Git 不存空目录，不用 `.gitkeep`）。
 
 ## Considered Options
 
@@ -23,7 +23,8 @@ Status: accepted
 - 每次保存一个提交，提交说明固定；不支持自定义说明。
 - 冲突不自动合并：远端变了就拒绝保存，用户选择覆盖或放弃；远端文件被删除时另外提供「重新创建」。
 - 离线或保存失败时保留本地草稿；不自动重试。
-- 新建已纳入本版：只新建文件，先提交空文件再进入编辑器，首次保存产生第二个提交；目录限定为既有镜像目录。新建目录、删除、重命名、附件上传仍不在本版。
+- 新建已纳入本版：只新建文件，先提交空文件再进入编辑器，首次保存产生第二个提交；目录既可从既有镜像目录中选择，也可用相对多级路径新建，目录随首篇文件在同一 commit 诞生（中间层可无直接文件）。删除、重命名/移动、附件上传仍不在本版；真空目录受 Git 限制不做。
+- 目录不是独立对象：没有文件的目录不会出现在仓库镜像或目录下拉中；新建目录必须伴随首篇文件。
 - 提交成功后用响应里的新 blob SHA 回填本地镜像，不立即整树同步；下次同步按 SHA diff 自然校准。
 - 保存时保留原文件统一的行尾（CRLF/LF），混合行尾统一为 LF；BOM 不保留。
 - 409 和 422 都先按疑似冲突处理，再 GET 远端文件区分「sha 不匹配」「文件已删除」与其他校验错误。
@@ -32,7 +33,7 @@ Status: accepted
 
 - `GLOSSARY.md`：回写、保存、草稿、冲突、仓库镜像。
 - `.scratch/ios-md-mirror/spec.md`：票 26。
-- `.scratch/ios-md-mirror/issues/26-p2-writeback.md`：完整验收与测试缝。
+- `.scratch/ios-md-mirror/issues/26-p2-writeback.md`、`.scratch/ios-md-mirror/issues/27-p2-new-note.md`、`.scratch/ios-md-mirror/issues/28-p2-new-directory.md`：完整验收与测试缝。
 - [GitHub Docs — Repository contents](https://docs.github.com/en/rest/repos/contents)
 - [GitHub Changelog — 2022-05-03](https://github.blog/changelog/2022-05-03-increased-file-size-limit-when-retrieving-file-contents-via-rest-api/)
 - [GitHub Community #155856](https://github.com/orgs/community/discussions/155856)
